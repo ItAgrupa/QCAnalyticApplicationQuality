@@ -436,6 +436,9 @@ export default function ImportsPage() {
   const [filterStatus, setFilterStatus] = useState<string>('')
   const [detailId, setDetailId] = useState<number | null>(null)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [duplicateImport, setDuplicateImport] = useState<{
+    id: number; file_name: string; status: string
+  } | null>(null)
   const [uploading, setUploading] = useState(false)
 
   // Page-level drag-over: highlight the upload zone when user drags over the page
@@ -457,13 +460,26 @@ export default function ImportsPage() {
 
   const handleUpload = useCallback(async (file: File, clientId: number) => {
     setUploadError(null)
+    setDuplicateImport(null)
     setUploading(true)
     try {
       await uploadImport(file, clientId)
       qc.invalidateQueries({ queryKey: ['imports'] })
     } catch (e: unknown) {
-      const err = e as { response?: { data?: { detail?: string } } }
-      setUploadError(err.response?.data?.detail ?? 'Upload failed. Please try again.')
+      const err = e as { response?: { status?: number; data?: { detail?: unknown } } }
+      const detail = err.response?.data?.detail
+      if (err.response?.status === 409 && detail && typeof detail === 'object') {
+        const dup = detail as { existing_import_id: number; existing_file_name: string; existing_status: string }
+        setDuplicateImport({
+          id: dup.existing_import_id,
+          file_name: dup.existing_file_name,
+          status: dup.existing_status,
+        })
+      } else {
+        setUploadError(
+          typeof detail === 'string' ? detail : 'Upload failed. Please try again.'
+        )
+      }
     } finally {
       setUploading(false)
     }
@@ -555,6 +571,30 @@ export default function ImportsPage() {
           {uploadError && (
             <Alert severity="error" onClose={() => setUploadError(null)} sx={{ mb: 1.5 }}>
               {uploadError}
+            </Alert>
+          )}
+          {duplicateImport && (
+            <Alert
+              severity="warning"
+              onClose={() => setDuplicateImport(null)}
+              sx={{ mb: 1.5 }}
+              action={
+                <Button
+                  size="small"
+                  color="warning"
+                  variant="outlined"
+                  startIcon={<ViewIcon />}
+                  onClick={() => { setDuplicateImport(null); setDetailId(duplicateImport.id) }}
+                >
+                  Open Import #{duplicateImport.id}
+                </Button>
+              }
+            >
+              <strong>Duplicate file detected.</strong>{' '}
+              <em>{duplicateImport.file_name}</em> was already uploaded as{' '}
+              <strong>Import #{duplicateImport.id}</strong>{' '}
+              (status: <strong>{duplicateImport.status.replace(/_/g, ' ')}</strong>).
+              Upload a different file or open the existing import below.
             </Alert>
           )}
           <UploadZone

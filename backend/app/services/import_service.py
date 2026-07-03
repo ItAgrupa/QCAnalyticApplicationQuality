@@ -1,6 +1,7 @@
 """Import job service — file upload, status tracking, list/get."""
 from __future__ import annotations
 
+import hashlib
 import os
 import uuid
 from datetime import datetime, timezone
@@ -76,6 +77,32 @@ async def upload_import(
     if len(pdf_bytes) > MAX_PDF_SIZE:
         raise HTTPException(status_code=413, detail="File too large (max 50 MB)")
 
+    # Duplicate detection via SHA-256 content hash
+    file_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    existing = (
+        db.query(ImportJob)
+        .filter(
+            ImportJob.file_hash == file_hash,
+            ImportJob.status != "CANCELLED",
+        )
+        .first()
+    )
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "message": (
+                    f"This file has already been uploaded as "
+                    f"'{existing.file_name}' (Import #{existing.id}, "
+                    f"status: {existing.status.replace('_', ' ')}). "
+                    f"Open the existing import to continue."
+                ),
+                "existing_import_id": existing.id,
+                "existing_file_name": existing.file_name,
+                "existing_status": existing.status,
+            },
+        )
+
     # Save file outside web root
     client_dir = Path(settings.UPLOAD_DIR) / str(client_id)
     client_dir.mkdir(parents=True, exist_ok=True)
@@ -90,6 +117,7 @@ async def upload_import(
         uploaded_by_user_id=user_id,
         original_file_path=str(file_path),
         file_name=file.filename,
+        file_hash=file_hash,
         file_type="pdf",
         status="UPLOADED",
     )

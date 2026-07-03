@@ -31,6 +31,8 @@ class ImportJob(Base, TimestampMixin):
     # VALIDATED → ANALYSED
     # Any → CANCELLED
 
+    file_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, unique=True, index=True)
+
     detected_template_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("report_templates.id"), nullable=True
     )
