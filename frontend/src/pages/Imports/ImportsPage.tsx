@@ -4,7 +4,7 @@ import {
   Box, Typography, Button, Chip, IconButton, Tooltip, MenuItem, TextField,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, CircularProgress,
   LinearProgress, Grid, Divider, Paper, Table, TableHead, TableRow,
-  TableCell, TableBody, TableContainer,
+  TableCell, TableBody, TableContainer, Collapse,
 } from '@mui/material'
 import {
   CloudUpload as UploadIcon, Refresh as RefreshIcon,
@@ -12,7 +12,8 @@ import {
   CheckCircle as OkIcon, Error as ErrorIcon,
   HourglassTop as PendingIcon, Visibility as ViewIcon,
   Edit as EditIcon, CheckCircle as ValidateIcon,
-  PlayArrow as ExtractIcon,
+  PlayArrow as ExtractIcon, Add as AddIcon,
+  PictureAsPdf as PdfIcon, Close as CloseIcon,
 } from '@mui/icons-material'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -47,11 +48,10 @@ function StatusChip({ status }: { status: string }) {
 }
 
 // ── Detail dialog ─────────────────────────────────────────────────────────────
-
 function PalletTable({ pallets }: { pallets: ParsedPayload['pallets'] }) {
-  if (!pallets?.length) return <Typography variant="body2" color="text.secondary">No pallets extracted.</Typography>
+  if (!pallets?.length)
+    return <Typography variant="body2" color="text.secondary">No pallets extracted.</Typography>
 
-  // Collect all measurement codes
   const allCodes = Array.from(
     new Set(pallets.flatMap(p => p.measurements.map(m => m.parameter_code)))
   )
@@ -71,7 +71,8 @@ function PalletTable({ pallets }: { pallets: ParsedPayload['pallets'] }) {
           {pallets.map((p, i) => {
             const byCode: Record<string, string> = {}
             p.measurements.forEach(m => {
-              byCode[m.parameter_code] = m.value_text ?? (m.value_numeric != null ? String(m.value_numeric) + (m.unit ? ` ${m.unit}` : '') : '—')
+              byCode[m.parameter_code] =
+                m.value_text ?? (m.value_numeric != null ? String(m.value_numeric) + (m.unit ? ` ${m.unit}` : '') : '—')
             })
             return (
               <TableRow key={i} hover>
@@ -141,9 +142,12 @@ function ImportDetailDialog({ importId, onClose }: { importId: number; onClose: 
           <Typography variant="h6" fontWeight={700}>{data?.file_name}</Typography>
           {data && <Box mt={0.5}><StatusChip status={data.status} /></Box>}
         </Box>
-        {data?.extraction_confidence != null && (
-          <Chip label={`Confidence: ${Math.round(data.extraction_confidence * 100)}%`} color="info" size="small" />
-        )}
+        <Box display="flex" alignItems="center" gap={1}>
+          {data?.extraction_confidence != null && (
+            <Chip label={`Confidence: ${Math.round(data.extraction_confidence * 100)}%`} color="info" size="small" />
+          )}
+          <IconButton size="small" onClick={onClose}><CloseIcon /></IconButton>
+        </Box>
       </DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
         {isLoading && <LinearProgress />}
@@ -156,42 +160,38 @@ function ImportDetailDialog({ importId, onClose }: { importId: number; onClose: 
         {quickError && (
           <Alert severity="error" onClose={() => setQuickError(null)}>{quickError}</Alert>
         )}
-
         {isReady && (
           <Alert severity="info" icon={false}>
-            Review the extracted data below. If everything looks correct click <strong>Validate</strong>.
-            If you need to correct fields, click <strong>Edit</strong>.
+            Review the extracted data below. Click <strong>Validate</strong> if correct, or <strong>Edit</strong> to correct fields.
           </Alert>
         )}
         {isValidated && (
           <Alert severity="success" icon={false}>
-            This import has been validated. You can <strong>Edit</strong> and re-validate if corrections are needed.
+            This import has been validated. Click <strong>Edit</strong> to make corrections if needed.
           </Alert>
         )}
-
         {p && (
           <>
-            {/* Header fields */}
             <Box>
               <Typography variant="subtitle2" fontWeight={700} gutterBottom>Extracted Header</Typography>
               <Grid container spacing={1.5}>
                 {[
-                  ['Report #', p.report_number],
-                  ['Vessel Name', p.vessel_name],
-                  ['Container #', p.container_number],
-                  ['Load Reference', p.load_reference],
+                  ['Report #',        p.report_number],
+                  ['Vessel Name',     p.vessel_name],
+                  ['Container #',     p.container_number],
+                  ['Load Reference',  p.load_reference],
                   ['Inspection Date', p.inspection_date],
-                  ['Inspection Place', p.inspection_place],
-                  ['Client', p.client_name],
-                  ['Origin', p.origin_country],
-                  ['Product', p.product_name],
-                  ['Variety', p.variety_name],
-                  ['Packaging', p.packaging_name],
-                  ['Grower', p.grower_code],
-                  ['GGN', p.ggn],
-                  ['Total Pallets', p.total_pallets],
-                  ['Total Cases', p.total_cases],
-                  ['Temperature', p.temperature != null ? `${p.temperature} °C` : null],
+                  ['Inspection Place',p.inspection_place],
+                  ['Client',          p.client_name],
+                  ['Origin',          p.origin_country],
+                  ['Product',         p.product_name],
+                  ['Variety',         p.variety_name],
+                  ['Packaging',       p.packaging_name],
+                  ['Grower',          p.grower_code],
+                  ['GGN',             p.ggn],
+                  ['Total Pallets',   p.total_pallets],
+                  ['Total Cases',     p.total_cases],
+                  ['Temperature',     p.temperature != null ? `${p.temperature} °C` : null],
                 ].map(([label, value]) => value != null && (
                   <Grid item xs={6} sm={4} md={3} key={String(label)}>
                     <Typography variant="caption" color="text.secondary">{label}</Typography>
@@ -200,18 +200,13 @@ function ImportDetailDialog({ importId, onClose }: { importId: number; onClose: 
                 ))}
               </Grid>
             </Box>
-
             <Divider />
-
-            {/* Pallet table */}
             <Box>
               <Typography variant="subtitle2" fontWeight={700} gutterBottom>
                 Pallets ({p.pallets?.length ?? 0})
               </Typography>
               <PalletTable pallets={p.pallets ?? []} />
             </Box>
-
-            {/* Parser metadata */}
             <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap', mt: 'auto' }}>
               <Chip size="small" label={`Parser: ${p.parser_name} v${p.parser_version}`} variant="outlined" />
               <Chip size="small" label={`${data?.source_page_count ?? '?'} pages`} variant="outlined" />
@@ -221,37 +216,27 @@ function ImportDetailDialog({ importId, onClose }: { importId: number; onClose: 
         )}
       </DialogContent>
       <DialogActions sx={{ p: 2, gap: 1 }}>
-        <Button onClick={onClose}>Close</Button>
+        <Button onClick={onClose} startIcon={<CloseIcon />}>Close</Button>
         <Box flex={1} />
         {canExtract && (
-          <Button
-            variant="outlined"
-            color="secondary"
+          <Button variant="outlined" color="secondary"
             startIcon={extractMut.isPending ? <CircularProgress size={16} color="inherit" /> : <ExtractIcon />}
             disabled={extractMut.isPending}
-            onClick={() => extractMut.mutate()}
-          >
+            onClick={() => extractMut.mutate()}>
             {extractMut.isPending ? 'Extracting…' : 'Extract'}
           </Button>
         )}
         {canEdit && (
-          <Button
-            variant="outlined"
-            color="primary"
-            startIcon={<EditIcon />}
-            onClick={() => { onClose(); navigate(`/imports/${importId}/validate`) }}
-          >
+          <Button variant="outlined" color="primary" startIcon={<EditIcon />}
+            onClick={() => { onClose(); navigate(`/imports/${importId}/validate`) }}>
             Edit
           </Button>
         )}
         {canQuickValidate && (
-          <Button
-            variant="contained"
-            color="success"
+          <Button variant="contained" color="success"
             startIcon={quickMut.isPending ? <CircularProgress size={16} color="inherit" /> : <ValidateIcon />}
             disabled={quickMut.isPending}
-            onClick={() => quickMut.mutate()}
-          >
+            onClick={() => quickMut.mutate()}>
             {isReady ? 'Validate' : 'Re-validate'}
           </Button>
         )}
@@ -260,54 +245,183 @@ function ImportDetailDialog({ importId, onClose }: { importId: number; onClose: 
   )
 }
 
-// ── Upload zone ───────────────────────────────────────────────────────────────
+// ── Upload Zone ───────────────────────────────────────────────────────────────
 
-function UploadZone({ onUpload }: { onUpload: (file: File, clientId: number) => void; uploading: boolean }) {
+interface UploadZoneProps {
+  onUpload: (file: File, clientId: number) => void
+  uploading: boolean
+  defaultClientId?: string
+}
+
+function UploadZone({ onUpload, uploading, defaultClientId = '' }: UploadZoneProps) {
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
-  const [clientId, setClientId] = useState<string>('')
+  const [clientId, setClientId] = useState<string>(defaultClientId)
   const [dragOver, setDragOver] = useState(false)
+  const [pendingFile, setPendingFile] = useState<File | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  // When a file is picked (via drag or click), hold it for confirmation if no clientId yet
   const handleFiles = (files: FileList | null) => {
-    if (!files?.length || !clientId) return
-    onUpload(files[0], Number(clientId))
+    if (!files?.length) return
+    const file = files[0]
+    if (clientId) {
+      onUpload(file, Number(clientId))
+    } else {
+      setPendingFile(file)
+    }
+  }
+
+  const handleConfirm = () => {
+    if (pendingFile && clientId) {
+      onUpload(pendingFile, Number(clientId))
+      setPendingFile(null)
+    }
+  }
+
+  const handleCancel = () => {
+    setPendingFile(null)
+    if (fileRef.current) fileRef.current.value = ''
+  }
+
+  // Drag-and-drop on the zone
+  const onDragOver  = (e: React.DragEvent) => { e.preventDefault(); setDragOver(true)  }
+  const onDragLeave = (e: React.DragEvent) => { e.preventDefault(); setDragOver(false) }
+  const onDrop      = (e: React.DragEvent) => {
+    e.preventDefault()
+    setDragOver(false)
+    handleFiles(e.dataTransfer.files)
   }
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{
-        p: 3, borderRadius: 3, borderStyle: 'dashed',
-        borderColor: dragOver ? 'primary.main' : 'divider',
-        bgcolor: dragOver ? 'action.hover' : 'background.paper',
-        transition: 'all 0.2s',
-        cursor: clientId ? 'pointer' : 'default',
-      }}
-      onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-      onDragLeave={() => setDragOver(false)}
-      onDrop={e => { e.preventDefault(); setDragOver(false); handleFiles(e.dataTransfer.files) }}
-      onClick={() => clientId && fileRef.current?.click()}
-    >
-      <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
-        <UploadIcon sx={{ fontSize: 48, color: 'primary.light', opacity: 0.7 }} />
-        <Box textAlign="center">
-          <Typography variant="subtitle1" fontWeight={600}>Drop a quality report PDF here</Typography>
-          <Typography variant="body2" color="text.secondary">or click to browse — max 50 MB</Typography>
-        </Box>
-        <TextField
-          select size="small" label="Client *" value={clientId}
-          onChange={e => { e.stopPropagation(); setClientId(e.target.value) }}
-          onClick={e => e.stopPropagation()}
-          sx={{ minWidth: 240 }}
-        >
-          {clients?.items.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
-        </TextField>
-        {!clientId && (
-          <Typography variant="caption" color="text.disabled">Select a client before uploading</Typography>
+    <Box>
+      {/* Drop zone */}
+      <Paper
+        variant="outlined"
+        onDragOver={onDragOver}
+        onDragLeave={onDragLeave}
+        onDrop={onDrop}
+        sx={{
+          borderRadius: 3,
+          borderWidth: 2,
+          borderStyle: 'dashed',
+          borderColor: dragOver ? 'primary.main' : 'divider',
+          bgcolor: dragOver ? 'primary.50' : 'background.paper',
+          transition: 'border-color 0.2s, background-color 0.2s',
+          p: { xs: 3, sm: 4 },
+          // Subtle animated glow on drag-over
+          boxShadow: dragOver ? '0 0 0 4px rgba(25,118,210,0.12)' : 'none',
+        }}
+      >
+        {/* Pending file confirmation state */}
+        {pendingFile ? (
+          <Box display="flex" flexDirection="column" alignItems="center" gap={2}>
+            <PdfIcon sx={{ fontSize: 48, color: 'error.light' }} />
+            <Typography variant="subtitle1" fontWeight={700}>
+              {pendingFile.name}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {(pendingFile.size / 1024 / 1024).toFixed(2)} MB
+            </Typography>
+            <TextField
+              select size="small" label="Select Client *" value={clientId}
+              onChange={e => setClientId(e.target.value)}
+              sx={{ minWidth: 260 }}
+            >
+              {clients?.items.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
+            </TextField>
+            <Box display="flex" gap={1.5}>
+              <Button variant="outlined" color="inherit" startIcon={<CloseIcon />} onClick={handleCancel}>
+                Cancel
+              </Button>
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<UploadIcon />}
+                disabled={!clientId || uploading}
+                onClick={handleConfirm}
+              >
+                Upload Report
+              </Button>
+            </Box>
+          </Box>
+        ) : (
+          /* Normal (empty) state */
+          <Box display="flex" flexDirection="column" alignItems="center" gap={2.5}>
+            <Box
+              sx={{
+                width: 72, height: 72, borderRadius: '50%',
+                bgcolor: dragOver ? 'primary.main' : 'primary.50',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                transition: 'background-color 0.2s',
+              }}
+            >
+              <UploadIcon sx={{ fontSize: 36, color: dragOver ? 'white' : 'primary.main' }} />
+            </Box>
+
+            <Box textAlign="center">
+              <Typography variant="h6" fontWeight={700} gutterBottom>
+                {dragOver ? 'Release to upload' : 'Drag & Drop your PDF here'}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Supports Agroberries quality report PDFs · max 50 MB
+              </Typography>
+            </Box>
+
+            <Box display="flex" alignItems="center" gap={2} sx={{ width: '100%', maxWidth: 480 }}>
+              <Divider sx={{ flex: 1 }}>
+                <Typography variant="caption" color="text.disabled">or</Typography>
+              </Divider>
+            </Box>
+
+            <Box display="flex" alignItems="center" gap={2} flexWrap="wrap" justifyContent="center">
+              <TextField
+                select size="small" label="Client *" value={clientId}
+                onChange={e => { e.stopPropagation(); setClientId(e.target.value) }}
+                onClick={e => e.stopPropagation()}
+                sx={{ minWidth: 220 }}
+              >
+                {clients?.items.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
+              </TextField>
+
+              <Button
+                variant="contained"
+                size="medium"
+                startIcon={<AddIcon />}
+                disabled={!clientId || uploading}
+                onClick={e => { e.stopPropagation(); fileRef.current?.click() }}
+                sx={{ borderRadius: 2, px: 3, fontWeight: 700 }}
+              >
+                Add Report
+              </Button>
+            </Box>
+
+            {!clientId && (
+              <Typography variant="caption" color="text.disabled">
+                Select a client to enable upload
+              </Typography>
+            )}
+          </Box>
         )}
-        <input ref={fileRef} type="file" accept=".pdf" hidden onChange={e => handleFiles(e.target.files)} />
-      </Box>
-    </Paper>
+
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          hidden
+          onChange={e => handleFiles(e.target.files)}
+        />
+      </Paper>
+
+      {/* Upload progress */}
+      <Collapse in={uploading}>
+        <Box mt={1.5} display="flex" alignItems="center" gap={1.5}>
+          <LinearProgress sx={{ flex: 1, borderRadius: 1, height: 6 }} />
+          <Typography variant="caption" color="text.secondary" noWrap>
+            Uploading & extracting…
+          </Typography>
+        </Box>
+      </Collapse>
+    </Box>
   )
 }
 
@@ -324,6 +438,9 @@ export default function ImportsPage() {
   const [uploadError, setUploadError] = useState<string | null>(null)
   const [uploading, setUploading] = useState(false)
 
+  // Page-level drag-over: highlight the upload zone when user drags over the page
+  const [pageDragOver, setPageDragOver] = useState(false)
+
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
   const { data, isFetching, refetch } = useQuery({
     queryKey: ['imports', filterClient, filterStatus],
@@ -332,7 +449,7 @@ export default function ImportsPage() {
       status: filterStatus || undefined,
       page_size: 100,
     }),
-    refetchInterval: 5000, // poll every 5s to pick up status changes
+    refetchInterval: 5000,
   })
 
   const cancelMut = useMutation({ mutationFn: cancelImport, onSuccess: () => qc.invalidateQueries({ queryKey: ['imports'] }) })
@@ -353,76 +470,121 @@ export default function ImportsPage() {
   }, [qc])
 
   const columns: GridColDef[] = [
-    { field: 'file_name', headerName: 'File', flex: 1.5, renderCell: ({ row }) => (
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}
-        onClick={() => setDetailId((row as ImportJob).id)}>
-        <Typography variant="body2" color="primary.main" sx={{ textDecoration: 'underline' }}>
-          {(row as ImportJob).file_name}
-        </Typography>
-      </Box>
-    )},
+    {
+      field: 'file_name', headerName: 'File', flex: 1.5,
+      renderCell: ({ row }) => (
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, cursor: 'pointer' }}
+          onClick={() => setDetailId((row as ImportJob).id)}>
+          <PdfIcon sx={{ fontSize: 16, color: 'error.light', flexShrink: 0 }} />
+          <Typography variant="body2" color="primary.main" sx={{ textDecoration: 'underline' }}>
+            {(row as ImportJob).file_name}
+          </Typography>
+        </Box>
+      ),
+    },
     { field: 'client_name', headerName: 'Client', width: 180, renderCell: ({ row }) => (row as ImportJob).client_name ?? '—' },
     { field: 'status', headerName: 'Status', width: 200, renderCell: ({ row }) => <StatusChip status={(row as ImportJob).status} /> },
-    { field: 'extraction_confidence', headerName: 'Confidence', width: 120, renderCell: ({ row }) => {
-      const v = (row as ImportJob).extraction_confidence
-      return v != null ? `${Math.round(v * 100)}%` : '—'
-    }},
-    { field: 'created_at', headerName: 'Uploaded', width: 160, renderCell: ({ row }) =>
-      new Date((row as ImportJob).created_at).toLocaleString()
+    {
+      field: 'extraction_confidence', headerName: 'Confidence', width: 120,
+      renderCell: ({ row }) => {
+        const v = (row as ImportJob).extraction_confidence
+        return v != null ? `${Math.round(v * 100)}%` : '—'
+      },
     },
-    { field: 'actions', headerName: '', width: 110, sortable: false, renderCell: ({ row }) => {
-      const job = row as ImportJob
-      return (
-        <Box>
-          <Tooltip title="View details">
-            <IconButton size="small" onClick={() => setDetailId(job.id)}><ViewIcon fontSize="small" /></IconButton>
-          </Tooltip>
-          {canWrite && !['VALIDATED', 'ANALYSED', 'CANCELLED'].includes(job.status) && (
-            <Tooltip title="Cancel">
-              <IconButton size="small" color="warning" onClick={() => cancelMut.mutate(job.id)}>
-                <CancelIcon fontSize="small" />
+    {
+      field: 'created_at', headerName: 'Uploaded', width: 160,
+      renderCell: ({ row }) => new Date((row as ImportJob).created_at).toLocaleString(),
+    },
+    {
+      field: 'actions', headerName: '', width: 110, sortable: false,
+      renderCell: ({ row }) => {
+        const job = row as ImportJob
+        return (
+          <Box>
+            <Tooltip title="View details">
+              <IconButton size="small" onClick={() => setDetailId(job.id)}>
+                <ViewIcon fontSize="small" />
               </IconButton>
             </Tooltip>
-          )}
-          {canWrite && job.status !== 'EXTRACTING' && (
-            <Tooltip title="Delete">
-              <IconButton size="small" color="error" onClick={() => deleteMut.mutate(job.id)}>
-                <DeleteIcon fontSize="small" />
-              </IconButton>
-            </Tooltip>
-          )}
-        </Box>
-      )
-    }},
+            {canWrite && !['VALIDATED', 'ANALYSED', 'CANCELLED'].includes(job.status) && (
+              <Tooltip title="Cancel">
+                <IconButton size="small" color="warning" onClick={() => cancelMut.mutate(job.id)}>
+                  <CancelIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+            {canWrite && job.status !== 'EXTRACTING' && (
+              <Tooltip title="Delete">
+                <IconButton size="small" color="error" onClick={() => deleteMut.mutate(job.id)}>
+                  <DeleteIcon fontSize="small" />
+                </IconButton>
+              </Tooltip>
+            )}
+          </Box>
+        )
+      },
+    },
   ]
 
   return (
-    <Box>
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
+    <Box
+      onDragOver={e => { e.preventDefault(); if (canWrite) setPageDragOver(true)  }}
+      onDragLeave={e => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setPageDragOver(false) }}
+      onDrop={e => { e.preventDefault(); setPageDragOver(false) }}
+    >
+      {/* Page header */}
+      <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={3}>
         <Box>
           <Typography variant="h5" fontWeight={700}>Import Reports</Typography>
           <Typography variant="body2" color="text.secondary">
-            Upload PDF quality reports — the system extracts data automatically
+            Upload PDF quality reports — data is extracted automatically
           </Typography>
         </Box>
-        <Tooltip title="Refresh list">
-          <IconButton onClick={() => refetch()} disabled={isFetching}><RefreshIcon /></IconButton>
-        </Tooltip>
+        <Box display="flex" gap={1} alignItems="center">
+          <Tooltip title="Refresh list">
+            <IconButton onClick={() => refetch()} disabled={isFetching}>
+              <RefreshIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
       {/* Upload zone */}
       {canWrite && (
         <Box mb={3}>
-          {uploading && <LinearProgress sx={{ mb: 1, borderRadius: 1 }} />}
           {uploadError && (
-            <Alert severity="error" onClose={() => setUploadError(null)} sx={{ mb: 1 }}>{uploadError}</Alert>
+            <Alert severity="error" onClose={() => setUploadError(null)} sx={{ mb: 1.5 }}>
+              {uploadError}
+            </Alert>
           )}
-          <UploadZone onUpload={handleUpload} uploading={uploading} />
+          <UploadZone
+            onUpload={handleUpload}
+            uploading={uploading}
+          />
+        </Box>
+      )}
+
+      {/* Page-level drag overlay hint */}
+      {pageDragOver && canWrite && (
+        <Box
+          sx={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            bgcolor: 'rgba(25,118,210,0.08)',
+            border: '4px dashed',
+            borderColor: 'primary.main',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            pointerEvents: 'none',
+          }}
+        >
+          <Paper sx={{ p: 4, borderRadius: 3, textAlign: 'center', boxShadow: 8 }}>
+            <UploadIcon sx={{ fontSize: 56, color: 'primary.main', mb: 1 }} />
+            <Typography variant="h6" fontWeight={700}>Drop PDF to upload</Typography>
+          </Paper>
         </Box>
       )}
 
       {/* Filters */}
-      <Box display="flex" gap={2} mb={2} flexWrap="wrap">
+      <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
         <TextField select size="small" label="Filter by client" value={filterClient}
           onChange={e => setFilterClient(e.target.value)} sx={{ minWidth: 200 }}>
           <MenuItem value="">All clients</MenuItem>
@@ -436,9 +598,10 @@ export default function ImportsPage() {
           ))}
         </TextField>
         <Chip label={`${data?.total ?? 0} total`} size="small" sx={{ alignSelf: 'center' }} />
+        {isFetching && <CircularProgress size={16} />}
       </Box>
 
-      {/* Grid */}
+      {/* Data grid */}
       <DataGrid
         rows={data?.items ?? []}
         columns={columns}

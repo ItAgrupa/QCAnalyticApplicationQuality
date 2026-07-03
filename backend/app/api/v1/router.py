@@ -17,6 +17,7 @@ from app.api.v1 import (
     loads,
     reports,
     dashboard,
+    analytics,
     exports,
     audit,
 )
@@ -39,5 +40,6 @@ api_router.include_router(imports.router, prefix="/imports", tags=["Imports"])
 api_router.include_router(loads.router, prefix="/loads", tags=["Loads"])
 api_router.include_router(reports.router, prefix="/reports", tags=["Reports"])
 api_router.include_router(dashboard.router, prefix="/dashboard", tags=["Dashboard"])
+api_router.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
 api_router.include_router(exports.router, prefix="/exports", tags=["Exports"])
 api_router.include_router(audit.router, prefix="/audit", tags=["Audit"])
