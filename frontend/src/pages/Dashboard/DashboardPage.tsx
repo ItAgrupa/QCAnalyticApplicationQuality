@@ -1,94 +1,281 @@
+import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
-  Box, Typography, Grid, Card, CardContent, Chip,
-  Table, TableHead, TableRow, TableCell, TableBody, TableContainer,
-  Paper, Skeleton, Alert, Divider, Stack,
+  Box, Typography, Grid, Chip, Divider, Skeleton, Alert, Tooltip,
+  Table, TableHead, TableRow, TableCell, TableBody, TableContainer, Paper,
+  Stack, LinearProgress, Button,
 } from '@mui/material'
 import {
-  Inventory as LoadsIcon,
+  BarChart as KpiIcon,
+  Inventory2 as PkgIcon,
   UploadFile as ImportIcon,
-  CalendarMonth as MonthIcon,
+  TrendingUp as TrendIcon,
+  ExpandMore as ExpandIcon,
+  ExpandLess as CollapseIcon,
   HourglassTop as PendingIcon,
 } from '@mui/icons-material'
-import { getDashboard } from '@/api/dashboard'
+import { getDashboard, type MeasurementAverage } from '@/api/dashboard'
 
-// ── Status chip helpers ────────────────────────────────────────────────────────
-const IMPORT_STATUS_COLOR: Record<string, 'default' | 'warning' | 'info' | 'success' | 'error'> = {
-  UPLOADED:              'default',
-  EXTRACTING:            'info',
-  READY_FOR_VALIDATION:  'warning',
-  VALIDATED:             'success',
-  ANALYSED:              'success',
-  EXTRACTION_FAILED:     'error',
-  CANCELLED:             'default',
+// ─────────────────────────────────────────────────────────────────────────────
+// Parameters hidden by default — user reveals with "See More"
+// ─────────────────────────────────────────────────────────────────────────────
+const HIDDEN_PARAMS = new Set([
+  'major_p1', 'major_p2', 'major_p3', 'major_p4',
+  'sample_w_s1', 'sample_w_s2', 'sample_w_s3', 'sample_w_s4',
+  'internal_lt60', 'internal_60_70', 'internal_gt70',
+  'size_min', 'size_max',
+])
+
+// Priority order for visible params
+const PRIORITY_PARAMS = [
+  'bloom', 'decay', 'mold', 'shrivel', 'red_color',
+  'undersize', 'brix', 'leakers', 'defect_pct',
+  'botrytis', 'firmness', 'soft_overripe', 'mechanical_damage',
+]
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Colour helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function metricColor(
+  value: number | null,
+  stdMax: number | null,
+  stdMin: number | null,
+  invertLogic = false,
+): string {
+  if (value == null) return '#757575'
+  if (!invertLogic && stdMax != null) {
+    const ratio = value / stdMax
+    if (ratio <= 0.5)  return '#2e7d32'
+    if (ratio <= 0.85) return '#f57f17'
+    if (ratio <= 1.0)  return '#e65100'
+    return '#c62828'
+  }
+  if (invertLogic && stdMin != null) {
+    if (value >= stdMin)        return '#2e7d32'
+    if (value >= stdMin * 0.85) return '#f57f17'
+    return '#c62828'
+  }
+  return '#0277bd'
 }
 
-const LOAD_STATUS_COLOR: Record<string, 'default' | 'success' | 'warning' | 'error'> = {
-  APPROVED:   'success',
-  REJECTED:   'error',
-  CONDITIONAL:'warning',
-  PENDING:    'default',
+function passRateColor(rate: number | null): string {
+  if (rate == null) return '#757575'
+  if (rate >= 95)   return '#2e7d32'
+  if (rate >= 80)   return '#f57f17'
+  return '#c62828'
 }
 
-function ImportStatusChip({ status }: { status: string }) {
+// ─────────────────────────────────────────────────────────────────────────────
+// Section header — Power BI dark title bar
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SectionHeader({ icon, title, action }: {
+  icon: React.ReactNode; title: string; action?: React.ReactNode
+}) {
   return (
-    <Chip
-      size="small"
-      label={status.replace(/_/g, ' ')}
-      color={IMPORT_STATUS_COLOR[status] ?? 'default'}
-    />
+    <Box
+      display="flex" alignItems="center" gap={1} px={2} py={0.75}
+      sx={{
+        bgcolor: '#1e2130',
+        borderRadius: '6px 6px 0 0',
+        borderBottom: '2px solid #2196f3',
+      }}
+    >
+      <Box sx={{ color: '#2196f3', display: 'flex' }}>{icon}</Box>
+      <Typography variant="subtitle2" fontWeight={700}
+        sx={{ color: '#e0e0e0', letterSpacing: 0.4, flex: 1 }}>
+        {title}
+      </Typography>
+      {action}
+    </Box>
   )
 }
 
-function LoadStatusChip({ status }: { status: string }) {
-  return (
-    <Chip
-      size="small"
-      label={status}
-      color={LOAD_STATUS_COLOR[status] ?? 'default'}
-    />
-  )
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Top-level KPI card (pass rate, pallet counts, total loads)
+// ─────────────────────────────────────────────────────────────────────────────
 
-// ── KPI card ──────────────────────────────────────────────────────────────────
 interface KpiCardProps {
   label: string
-  value: number | string
-  icon: React.ReactNode
-  color: string
-  loading: boolean
+  value: string | number | null
+  subLabel?: string
+  color?: string
+  loading?: boolean
+  barValue?: number
 }
 
-function KpiCard({ label, value, icon, color, loading }: KpiCardProps) {
+function KpiCard({ label, value, subLabel, color = '#1565c0', loading, barValue }: KpiCardProps) {
   return (
-    <Card variant="outlined" sx={{ height: '100%' }}>
-      <CardContent>
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between">
-          <Box>
-            <Typography variant="body2" color="text.secondary" gutterBottom>
-              {label}
-            </Typography>
-            {loading ? (
-              <Skeleton width={60} height={40} />
-            ) : (
-              <Typography variant="h4" fontWeight={700}>
-                {value}
-              </Typography>
-            )}
-          </Box>
-          <Box sx={{ p: 1, borderRadius: 2, bgcolor: `${color}.light`, color: `${color}.dark`, display: 'flex' }}>
-            {icon}
-          </Box>
-        </Stack>
-      </CardContent>
-    </Card>
+    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, height: '100%', position: 'relative', overflow: 'hidden' }}>
+      <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, bgcolor: color }} />
+      {loading ? (
+        <Skeleton variant="text" width="65%" height={36} sx={{ mt: 0.5 }} />
+      ) : (
+        <Typography variant="h5" fontWeight={800} sx={{ color, mt: 0.25, lineHeight: 1.1 }}>
+          {value ?? '—'}
+        </Typography>
+      )}
+      <Typography variant="caption" color="text.secondary" display="block" mt={0.25}>
+        {label}
+      </Typography>
+      {subLabel && (
+        <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 10, fontStyle: 'italic' }}>
+          {subLabel}
+        </Typography>
+      )}
+      {barValue != null && (
+        <LinearProgress
+          variant="determinate"
+          value={Math.min(barValue, 100)}
+          sx={{
+            mt: 1, height: 3, borderRadius: 2,
+            bgcolor: 'action.hover',
+            '& .MuiLinearProgress-bar': { bgcolor: color },
+          }}
+        />
+      )}
+    </Paper>
   )
 }
 
-// ── Main page ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+// Measurement KPI card (bloom, decay, mold, etc.)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function MeasKpiCard({ m, loading }: { m: MeasurementAverage; loading?: boolean }) {
+  const val = m.avg_value
+  const color = metricColor(val, m.standard_max, m.standard_min)
+  const displayVal = val != null
+    ? `${val.toFixed(2)}${m.unit ? ' ' + m.unit : ''}`
+    : '—'
+
+  const refParts: string[] = []
+  if (m.standard_max != null) refParts.push(`≤ ${m.standard_max}${m.unit}`)
+  if (m.standard_min != null) refParts.push(`≥ ${m.standard_min}${m.unit}`)
+  const refLabel = refParts.length ? `Ref: ${refParts.join(' · ')}` : ''
+
+  const barVal = m.standard_max != null && val != null
+    ? Math.min((val / m.standard_max) * 100, 100)
+    : undefined
+
+  return (
+    <Tooltip
+      title={`Max recorded: ${m.max_value}${m.unit} | Avg min: ${m.avg_min ?? '—'} | Avg max: ${m.avg_max ?? '—'}`}
+      placement="top"
+    >
+      <Paper
+        variant="outlined"
+        sx={{ p: 1.5, borderRadius: 2, minHeight: 90, display: 'flex', flexDirection: 'column',
+          justifyContent: 'space-between', cursor: 'default', position: 'relative', overflow: 'hidden' }}
+      >
+        <Box sx={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, bgcolor: color }} />
+
+        {loading ? (
+          <Skeleton variant="text" width="55%" height={32} sx={{ mt: 0.5 }} />
+        ) : (
+          <Typography variant="h6" fontWeight={800} sx={{ color, mt: 0.25 }}>
+            {displayVal}
+          </Typography>
+        )}
+
+        <Box>
+          <Typography variant="caption" color="text.secondary" display="block">
+            {m.parameter_name}
+          </Typography>
+          {refLabel && (
+            <Typography variant="caption" sx={{ color: 'text.disabled', fontSize: 9, fontStyle: 'italic' }}>
+              {refLabel}
+            </Typography>
+          )}
+        </Box>
+
+        {barVal != null && (
+          <LinearProgress
+            variant="determinate"
+            value={barVal}
+            sx={{
+              mt: 0.75, height: 3, borderRadius: 2,
+              bgcolor: 'action.hover',
+              '& .MuiLinearProgress-bar': { bgcolor: color },
+            }}
+          />
+        )}
+      </Paper>
+    </Tooltip>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Packaging breakdown card
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PkgCard({ label, bulkVal, pkgVal, unit, stdMax, loading }: {
+  label: string; bulkVal: number | undefined; pkgVal: number | undefined
+  unit: string; stdMax?: number; loading?: boolean
+}) {
+  const fmtBulk = bulkVal != null ? `${bulkVal.toFixed(2)}${unit}` : '—'
+  const fmtPkg  = pkgVal  != null ? `${pkgVal.toFixed(2)}${unit}`  : '—'
+  const colorB  = metricColor(bulkVal ?? null, stdMax ?? null, null)
+  const colorP  = metricColor(pkgVal  ?? null, stdMax ?? null, null)
+
+  return (
+    <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, minHeight: 80 }}>
+      <Typography variant="caption"
+        sx={{ color: 'primary.main', fontWeight: 700, textTransform: 'uppercase', fontSize: 9, letterSpacing: 0.8 }}>
+        {label}
+      </Typography>
+      <Grid container spacing={1} mt={0.25}>
+        <Grid item xs={6}>
+          {loading ? <Skeleton width={50} /> : (
+            <Typography variant="h6" fontWeight={800} sx={{ color: colorB }}>{fmtBulk}</Typography>
+          )}
+          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 9 }}>Bulk</Typography>
+        </Grid>
+        <Grid item xs={6}>
+          {loading ? <Skeleton width={50} /> : (
+            <Typography variant="h6" fontWeight={800} sx={{ color: colorP }}>{fmtPkg}</Typography>
+          )}
+          <Typography variant="caption" color="text.disabled" sx={{ fontSize: 9 }}>Packaged</Typography>
+        </Grid>
+      </Grid>
+    </Paper>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Status colour maps
+// ─────────────────────────────────────────────────────────────────────────────
+
+const IMPORT_COLOR: Record<string, 'default' | 'warning' | 'info' | 'success' | 'error'> = {
+  UPLOADED: 'default', EXTRACTING: 'info', READY_FOR_VALIDATION: 'warning',
+  VALIDATED: 'success', ANALYSED: 'success', EXTRACTION_FAILED: 'error', CANCELLED: 'default',
+}
+const LOAD_COLOR: Record<string, 'default' | 'success' | 'warning' | 'error'> = {
+  APPROVED: 'success', PASS: 'success', REJECT: 'error', HOLD: 'warning', PENDING: 'default',
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section wrapper (border around content below dark header)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function SectionBody({ children }: { children: React.ReactNode }) {
+  return (
+    <Box sx={{ border: '1px solid', borderColor: 'divider', borderTop: 'none',
+      borderRadius: '0 0 6px 6px', p: 2 }}>
+      {children}
+    </Box>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main page
+// ─────────────────────────────────────────────────────────────────────────────
+
 export default function DashboardPage() {
   const navigate = useNavigate()
+  const [showMore, setShowMore] = useState(false)
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['dashboard'],
@@ -97,230 +284,338 @@ export default function DashboardPage() {
   })
 
   if (isError) {
-    return (
-      <Box p={3}>
-        <Alert severity="error">Failed to load dashboard data. Please refresh.</Alert>
-      </Box>
-    )
+    return <Alert severity="error" sx={{ mt: 2 }}>Failed to load dashboard data. Refresh the page.</Alert>
   }
+
+  // Sort and split measurements: visible vs hidden
+  const allMeas = [...(data?.measurement_averages ?? [])].sort((a, b) => {
+    const ai = PRIORITY_PARAMS.indexOf(a.parameter_code)
+    const bi = PRIORITY_PARAMS.indexOf(b.parameter_code)
+    if (ai !== -1 && bi !== -1) return ai - bi
+    if (ai !== -1) return -1
+    if (bi !== -1) return 1
+    return a.parameter_name.localeCompare(b.parameter_name)
+  })
+
+  const visibleMeas  = allMeas.filter(m => !HIDDEN_PARAMS.has(m.parameter_code))
+  const hiddenMeas   = allMeas.filter(m =>  HIDDEN_PARAMS.has(m.parameter_code))
+  const shownMeas    = showMore ? allMeas : visibleMeas
+
+  const bulk = data?.packaging_breakdown.bulk    ?? {}
+  const pkgd = data?.packaging_breakdown.packaged ?? {}
+
+  const passRateNum = data?.pass_rate ?? null
+  const passRateStr = passRateNum != null ? `${passRateNum}%` : '—'
 
   return (
     <Box>
-      <Typography variant="h5" fontWeight={700} gutterBottom>
-        Dashboard
-      </Typography>
-      <Typography variant="body2" color="text.secondary" mb={3}>
-        Overview of quality inspections and imports
-      </Typography>
+      {/* Page title row */}
+      <Box display="flex" alignItems="center" justifyContent="space-between" mb={2.5}>
+        <Box>
+          <Typography variant="h5" fontWeight={800} gutterBottom={false}>
+            Quality Intelligence Dashboard
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            Fresh Produce Inspection Analytics · auto-refreshes every 30 s
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1} alignItems="center">
+          {!isLoading && data && (
+            <Chip size="small" label={`${data.total_imports} imports`}
+              icon={<ImportIcon sx={{ fontSize: 14 }} />} variant="outlined" />
+          )}
+          {!isLoading && data && data.pending_validation > 0 && (
+            <Chip size="small" label={`${data.pending_validation} pending validation`}
+              icon={<PendingIcon sx={{ fontSize: 14 }} />} color="warning" />
+          )}
+        </Stack>
+      </Box>
 
-      {/* ── KPI cards ── */}
-      <Grid container spacing={2} mb={4}>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            label="Total Loads"
-            value={data?.total_loads ?? 0}
-            icon={<LoadsIcon fontSize="medium" />}
-            color="primary"
-            loading={isLoading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            label="Total Imports"
-            value={data?.total_imports ?? 0}
-            icon={<ImportIcon fontSize="medium" />}
-            color="info"
-            loading={isLoading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            label="Loads This Month"
-            value={data?.loads_this_month ?? 0}
-            icon={<MonthIcon fontSize="medium" />}
-            color="success"
-            loading={isLoading}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <KpiCard
-            label="Pending Validation"
-            value={data?.pending_validation ?? 0}
-            icon={<PendingIcon fontSize="medium" />}
-            color="warning"
-            loading={isLoading}
-          />
-        </Grid>
-      </Grid>
+      {/* ══ SECTION 1: KEY PERFORMANCE INDICATORS ══════════════════════════ */}
+      <Box mb={3}>
+        <SectionHeader icon={<KpiIcon fontSize="small" />} title="Key Performance Indicators" />
+        <SectionBody>
+          {/* Top KPI row */}
+          <Grid container spacing={1.5} mb={2}>
+            <Grid item xs={6} sm={4} md={2}>
+              <KpiCard
+                label="Pass Rate"
+                value={passRateStr}
+                subLabel="Target ≥ 95%"
+                color={passRateColor(passRateNum)}
+                loading={isLoading}
+                barValue={passRateNum ?? undefined}
+              />
+            </Grid>
+            <Grid item xs={6} sm={4} md={2}>
+              <KpiCard label="Total Pallets" value={data?.total_pallets ?? 0}
+                color="#1565c0" loading={isLoading} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={2}>
+              <KpiCard
+                label="Passed"
+                value={data?.passed_pallets ?? 0}
+                color="#2e7d32"
+                loading={isLoading}
+                barValue={data && data.total_pallets > 0
+                  ? (data.passed_pallets / data.total_pallets) * 100 : undefined}
+              />
+            </Grid>
+            <Grid item xs={6} sm={4} md={2}>
+              <KpiCard
+                label="Failed"
+                value={data?.failed_pallets ?? 0}
+                color={data?.failed_pallets ? '#c62828' : '#2e7d32'}
+                loading={isLoading}
+              />
+            </Grid>
+            <Grid item xs={6} sm={4} md={2}>
+              <KpiCard label="Total Loads" value={data?.total_loads ?? 0}
+                color="#4527a0" loading={isLoading} />
+            </Grid>
+            <Grid item xs={6} sm={4} md={2}>
+              <KpiCard label="This Month" value={data?.loads_this_month ?? 0}
+                color="#00695c" loading={isLoading} />
+            </Grid>
+          </Grid>
 
-      {/* ── Bottom section: Recent Imports + Recent Loads ── */}
-      <Grid container spacing={3}>
+          {/* Measurement parameter KPIs */}
+          {(visibleMeas.length > 0 || isLoading) && (
+            <>
+              <Divider sx={{ mb: 1.5 }}>
+                <Typography variant="caption" color="text.disabled">Average per Parameter — All Loads</Typography>
+              </Divider>
+              <Grid container spacing={1.5}>
+                {isLoading
+                  ? Array.from({ length: 9 }).map((_, i) => (
+                      <Grid item xs={6} sm={4} md={2} key={i}>
+                        <Paper variant="outlined" sx={{ p: 1.5, borderRadius: 2, minHeight: 90 }}>
+                          <Skeleton height={32} />
+                          <Skeleton width="60%" />
+                        </Paper>
+                      </Grid>
+                    ))
+                  : shownMeas.map(m => (
+                      <Grid item xs={6} sm={4} md={2} key={m.parameter_code}>
+                        <MeasKpiCard m={m} />
+                      </Grid>
+                    ))
+                }
+              </Grid>
+
+              {/* See More / See Less toggle */}
+              {!isLoading && hiddenMeas.length > 0 && (
+                <Box display="flex" justifyContent="center" mt={1.5}>
+                  <Button
+                    size="small"
+                    variant="text"
+                    color="inherit"
+                    endIcon={showMore ? <CollapseIcon /> : <ExpandIcon />}
+                    onClick={() => setShowMore(v => !v)}
+                    sx={{ color: 'text.secondary', fontSize: 12 }}
+                  >
+                    {showMore
+                      ? 'See Less'
+                      : `See More (${hiddenMeas.length} additional indicators)`}
+                  </Button>
+                </Box>
+              )}
+            </>
+          )}
+
+          {!isLoading && allMeas.length === 0 && (
+            <Typography variant="body2" color="text.secondary" textAlign="center" py={2}>
+              No measurement data yet. Analyse a load to see averages.
+            </Typography>
+          )}
+        </SectionBody>
+      </Box>
+
+      {/* ══ SECTION 2: BULK vs PACKAGED ════════════════════════════════════ */}
+      <Box mb={3}>
+        <SectionHeader icon={<PkgIcon fontSize="small" />} title="Bulk vs Packaged — Quality & Condition" />
+        <SectionBody>
+          {(() => {
+            const pkgParams = [
+              { code: 'decay',      label: 'Avg Decay',            unit: '%',      stdMax: 1 },
+              { code: 'mold',       label: 'Avg Mold',             unit: '%',      stdMax: 1 },
+              { code: 'bloom',      label: 'Avg Bloom',            unit: '%' },
+              { code: 'brix',       label: 'Avg Brix',             unit: '°Brix' },
+              { code: 'shrivel',    label: 'Avg Shrivel',          unit: '%',      stdMax: 10 },
+              { code: 'red_color',  label: 'Avg Red Colour',       unit: '%',      stdMax: 10 },
+              { code: 'undersize',  label: 'Avg Undersize',        unit: '%',      stdMax: 10 },
+              { code: 'defect_pct', label: 'Total Quality Defect', unit: '%',      stdMax: 5 },
+              { code: 'leakers',    label: 'Avg Leakers',          unit: '%',      stdMax: 0.5 },
+            ].filter(p => bulk[p.code] != null || pkgd[p.code] != null)
+
+            if (!isLoading && pkgParams.length === 0) {
+              return (
+                <Typography variant="body2" color="text.secondary" textAlign="center" py={2}>
+                  No packaging breakdown yet. Assign packaging type to a load and re-analyse.
+                </Typography>
+              )
+            }
+
+            return (
+              <Grid container spacing={1.5}>
+                {(isLoading
+                  ? Array.from({ length: 8 }).map((_, i) => ({ code: `sk${i}`, label: '', unit: '', stdMax: undefined }))
+                  : pkgParams
+                ).map(p => (
+                  <Grid item xs={6} sm={4} md={3} key={p.code}>
+                    <PkgCard
+                      label={p.label}
+                      bulkVal={bulk[p.code]}
+                      pkgVal={pkgd[p.code]}
+                      unit={p.unit}
+                      stdMax={p.stdMax}
+                      loading={isLoading}
+                    />
+                  </Grid>
+                ))}
+              </Grid>
+            )
+          })()}
+        </SectionBody>
+      </Box>
+
+      {/* ══ SECTION 3: RECENT ACTIVITY ═════════════════════════════════════ */}
+      <Grid container spacing={2}>
+
         {/* Recent Imports */}
         <Grid item xs={12} lg={6}>
-          <Paper variant="outlined" sx={{ height: '100%' }}>
-            <Box px={2} pt={2} pb={1}>
-              <Typography variant="subtitle1" fontWeight={600}>
-                Recent Imports
-              </Typography>
-            </Box>
-            <Divider />
+          <SectionHeader icon={<ImportIcon fontSize="small" />} title="Recent Imports" />
+          <Box sx={{ border: '1px solid', borderColor: 'divider', borderTop: 'none', borderRadius: '0 0 6px 6px' }}>
             <TableContainer>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>File</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Confidence</TableCell>
-                    <TableCell>Date</TableCell>
+                    {['File', 'Status', 'Conf.', 'Date'].map(h => (
+                      <TableCell key={h}
+                        sx={{ fontWeight: 700, fontSize: 11, color: 'text.secondary', bgcolor: 'action.hover' }}>
+                        {h}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {isLoading
                     ? Array.from({ length: 5 }).map((_, i) => (
                         <TableRow key={i}>
-                          {[1, 2, 3, 4].map(j => (
-                            <TableCell key={j}><Skeleton /></TableCell>
-                          ))}
+                          {[1, 2, 3, 4].map(j => <TableCell key={j}><Skeleton /></TableCell>)}
                         </TableRow>
                       ))
                     : (data?.recent_imports ?? []).map(imp => (
-                        <TableRow
-                          key={imp.id}
-                          hover
-                          sx={{ cursor: 'pointer' }}
-                          onClick={() => navigate('/imports')}
-                        >
-                          <TableCell sx={{ maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            <Typography variant="body2" noWrap title={imp.file_name}>
-                              {imp.file_name}
-                            </Typography>
+                        <TableRow key={imp.id} hover sx={{ cursor: 'pointer' }}
+                          onClick={() => navigate('/imports')}>
+                          <TableCell sx={{ maxWidth: 180 }}>
+                            <Tooltip title={imp.file_name}>
+                              <Typography variant="body2" noWrap>
+                                {imp.file_name.replace(/^[a-f0-9]+_/, '')}
+                              </Typography>
+                            </Tooltip>
                           </TableCell>
                           <TableCell>
-                            <ImportStatusChip status={imp.status} />
+                            <Chip size="small" label={imp.status.replace(/_/g, ' ')}
+                              color={IMPORT_COLOR[imp.status] ?? 'default'} />
                           </TableCell>
-                          <TableCell align="right">
+                          <TableCell sx={{ color: 'text.secondary' }}>
                             {imp.extraction_confidence != null
-                              ? `${Math.round(imp.extraction_confidence * 100)}%`
-                              : '—'}
+                              ? `${Math.round(imp.extraction_confidence * 100)}%` : '—'}
                           </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {imp.created_at
-                                ? new Date(imp.created_at).toLocaleDateString()
-                                : '—'}
-                            </Typography>
+                          <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                            {imp.created_at ? new Date(imp.created_at).toLocaleDateString() : '—'}
                           </TableCell>
                         </TableRow>
                       ))}
                   {!isLoading && (data?.recent_imports ?? []).length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={4} align="center">
-                        <Typography variant="body2" color="text.secondary" py={2}>
-                          No imports yet
-                        </Typography>
+                      <TableCell colSpan={4} align="center" sx={{ color: 'text.disabled', py: 3 }}>
+                        No imports yet
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
             </TableContainer>
-          </Paper>
+          </Box>
         </Grid>
 
         {/* Recent Loads */}
         <Grid item xs={12} lg={6}>
-          <Paper variant="outlined" sx={{ height: '100%' }}>
-            <Box px={2} pt={2} pb={1}>
-              <Typography variant="subtitle1" fontWeight={600}>
-                Recent Loads
-              </Typography>
-            </Box>
-            <Divider />
+          <SectionHeader icon={<TrendIcon fontSize="small" />} title="Recent Loads" />
+          <Box sx={{ border: '1px solid', borderColor: 'divider', borderTop: 'none', borderRadius: '0 0 6px 6px' }}>
             <TableContainer>
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    <TableCell>Container</TableCell>
-                    <TableCell>Date</TableCell>
-                    <TableCell align="right">Pallets</TableCell>
-                    <TableCell>Status</TableCell>
-                    <TableCell align="right">Q Score</TableCell>
+                    {['Container', 'Date', 'Plts', 'Status', 'Q'].map(h => (
+                      <TableCell key={h}
+                        sx={{ fontWeight: 700, fontSize: 11, color: 'text.secondary', bgcolor: 'action.hover' }}>
+                        {h}
+                      </TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {isLoading
                     ? Array.from({ length: 5 }).map((_, i) => (
                         <TableRow key={i}>
-                          {[1, 2, 3, 4, 5].map(j => (
-                            <TableCell key={j}><Skeleton /></TableCell>
-                          ))}
+                          {[1, 2, 3, 4, 5].map(j => <TableCell key={j}><Skeleton /></TableCell>)}
                         </TableRow>
                       ))
-                    : (data?.recent_loads ?? []).map(load => (
-                        <TableRow
-                          key={load.id}
-                          hover
-                          sx={{ cursor: 'pointer' }}
-                          onClick={() => navigate('/reports')}
-                        >
+                    : (data?.recent_loads ?? []).map(lo => (
+                        <TableRow key={lo.id} hover sx={{ cursor: 'pointer' }}
+                          onClick={() => navigate(`/reports/${lo.id}`)}>
                           <TableCell>
-                            {load.container_number ?? load.load_reference ?? `#${load.id}`}
+                            {lo.container_number ?? lo.load_reference ?? `#${lo.id}`}
                           </TableCell>
-                          <TableCell>
-                            <Typography variant="body2" color="text.secondary">
-                              {load.inspection_date
-                                ? new Date(load.inspection_date).toLocaleDateString()
-                                : '—'}
-                            </Typography>
+                          <TableCell sx={{ color: 'text.secondary', whiteSpace: 'nowrap' }}>
+                            {lo.inspection_date ? new Date(lo.inspection_date).toLocaleDateString() : '—'}
                           </TableCell>
-                          <TableCell align="right">
-                            {load.total_pallets ?? '—'}
+                          <TableCell sx={{ color: 'text.secondary' }}>
+                            {lo.total_pallets ?? '—'}
                           </TableCell>
                           <TableCell>
-                            <LoadStatusChip status={load.final_status} />
+                            <Chip size="small" label={lo.final_status}
+                              color={LOAD_COLOR[lo.final_status] ?? 'default'} />
                           </TableCell>
-                          <TableCell align="right">
-                            {load.quality_score != null
-                              ? load.quality_score.toFixed(1)
-                              : '—'}
+                          <TableCell>
+                            {lo.quality_score != null ? (
+                              <Typography variant="body2" fontWeight={700}
+                                sx={{ color: ['#2e7d32', '#0277bd', '#e65100', '#c62828'][Math.round(lo.quality_score) - 1] ?? 'text.secondary' }}>
+                                Q{Math.round(lo.quality_score)}
+                              </Typography>
+                            ) : '—'}
                           </TableCell>
                         </TableRow>
                       ))}
                   {!isLoading && (data?.recent_loads ?? []).length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} align="center">
-                        <Typography variant="body2" color="text.secondary" py={2}>
-                          No loads yet
-                        </Typography>
+                      <TableCell colSpan={5} align="center" sx={{ color: 'text.disabled', py: 3 }}>
+                        No loads yet
                       </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
             </TableContainer>
-          </Paper>
+          </Box>
         </Grid>
       </Grid>
 
-      {/* ── Status distribution summary ── */}
-      {!isLoading && data && (
-        <Box mt={3}>
-          <Paper variant="outlined" sx={{ p: 2 }}>
-            <Typography variant="subtitle2" fontWeight={600} mb={1}>
-              Import Status Distribution
-            </Typography>
-            <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-              {Object.entries(data.import_status_counts).map(([status, count]) => (
-                <Chip
-                  key={status}
-                  label={`${status.replace(/_/g, ' ')}: ${count}`}
-                  color={IMPORT_STATUS_COLOR[status] ?? 'default'}
-                  size="small"
-                  variant="outlined"
-                />
-              ))}
-            </Stack>
-          </Paper>
+      {/* ══ Import pipeline status strip ═══════════════════════════════════ */}
+      {!isLoading && data && Object.keys(data.import_status_counts).length > 0 && (
+        <Box mt={2} display="flex" alignItems="center" gap={1.5} flexWrap="wrap">
+          <Typography variant="caption" color="text.disabled" fontWeight={700}
+            sx={{ textTransform: 'uppercase', fontSize: 9, letterSpacing: 0.8 }}>
+            Import Pipeline
+          </Typography>
+          {Object.entries(data.import_status_counts).map(([status, count]) => (
+            <Chip key={status} size="small" variant="outlined"
+              label={`${status.replace(/_/g, ' ')}: ${count}`}
+              color={IMPORT_COLOR[status] ?? 'default'} />
+          ))}
         </Box>
       )}
     </Box>

@@ -1,12 +1,38 @@
 import axiosClient from './axiosClient'
 
+export interface MeasurementAverage {
+  parameter_code: string
+  parameter_name: string
+  unit: string
+  avg_value: number | null
+  avg_max: number | null
+  avg_min: number | null
+  max_value: number
+  standard_min: number | null
+  standard_max: number | null
+}
+
 export interface DashboardData {
+  // counts
   total_loads: number
   total_imports: number
   loads_this_month: number
   pending_validation: number
   load_status_counts: Record<string, number>
   import_status_counts: Record<string, number>
+  // pallet quality
+  total_pallets: number
+  passed_pallets: number
+  failed_pallets: number
+  hold_pallets: number
+  pass_rate: number | null
+  // measurement averages
+  measurement_averages: MeasurementAverage[]
+  packaging_breakdown: {
+    bulk: Record<string, number>
+    packaged: Record<string, number>
+  }
+  // activity
   recent_imports: RecentImport[]
   recent_loads: RecentLoad[]
 }
