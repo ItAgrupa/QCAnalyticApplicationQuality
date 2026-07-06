@@ -19,8 +19,9 @@ import {
 } from '@mui/icons-material'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/hooks/useAuthStore'
-import { MagopcoLogoMark } from '@/components/MagopcoLogo'
+import { MagopcoLogoMark, MagopcoLogoHorizontal } from '@/components/MagopcoLogo'
 
+// permanent sidebar width (laptop / large tablet)
 const DRAWER_WIDTH = 248
 
 const NAV_ITEMS = [
@@ -87,19 +88,11 @@ export function MainLayout() {
           alignItems: 'center',
           gap: 1.5,
           borderBottom: '1px solid',
-          borderColor: 'rgba(123,31,162,0.1)',
+          borderColor: 'rgba(121,36,130,0.1)',
           minHeight: 64,
         }}
       >
-        <MagopcoLogoMark size={34} color="#7B1FA2" />
-        <Box>
-          <Typography variant="subtitle1" fontWeight={800} color="primary" lineHeight={1.1}>
-            Magopco
-          </Typography>
-          <Typography variant="caption" color="text.secondary" lineHeight={1}>
-            Quality Platform
-          </Typography>
-        </Box>
+        <MagopcoLogoHorizontal size={32} color="#792482" />
       </Box>
 
       {/* Main nav */}
@@ -114,7 +107,7 @@ export function MainLayout() {
         <NavList items={NAV_ITEMS} />
       </Box>
 
-      <Divider sx={{ mx: 2, my: 1.5, borderColor: 'rgba(123,31,162,0.1)' }} />
+      <Divider sx={{ mx: 2, my: 1.5, borderColor: 'rgba(121,36,130,0.1)' }} />
 
       {/* Admin nav */}
       <Box sx={{ px: 0 }}>
@@ -128,14 +121,13 @@ export function MainLayout() {
         <NavList items={NAV_ITEMS_ADMIN} />
       </Box>
 
-      {/* Spacer */}
       <Box sx={{ flexGrow: 1 }} />
 
-      {/* User info at bottom */}
+      {/* User info */}
       <Box
         sx={{
           p: 2,
-          borderTop: '1px solid rgba(123,31,162,0.1)',
+          borderTop: '1px solid rgba(121,36,130,0.1)',
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
@@ -144,7 +136,7 @@ export function MainLayout() {
         <Avatar
           sx={{
             width: 32, height: 32,
-            background: 'linear-gradient(135deg, #7B1FA2, #AB47BC)',
+            background: 'linear-gradient(135deg, #792482, #AB47BC)',
             fontSize: 13, fontWeight: 700,
           }}
         >
@@ -168,35 +160,33 @@ export function MainLayout() {
 
   return (
     <Box sx={{ display: 'flex', height: '100vh' }}>
-      {/* App bar */}
+      {/* ── App bar ─────────────────────────────────── */}
       <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
         <Toolbar sx={{ gap: 1 }}>
+          {/* Hamburger — shown on phone & tablet (below md) */}
           <IconButton
             color="inherit"
             edge="start"
             onClick={() => setMobileOpen(true)}
-            sx={{ display: { sm: 'none' } }}
+            sx={{ display: { md: 'none' } }}
           >
             <MenuIcon />
           </IconButton>
 
-          {/* Mobile logo */}
-          <Box sx={{ display: { xs: 'flex', sm: 'none' }, alignItems: 'center', gap: 1 }}>
-            <MagopcoLogoMark size={28} color="white" />
-            <Typography variant="subtitle1" fontWeight={700}>Magopco</Typography>
+          {/* Logo in AppBar — phone & tablet (no permanent sidebar visible) */}
+          <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1 }}>
+            <MagopcoLogoMark size={26} color="white" />
+            <Typography variant="subtitle1" fontWeight={700} letterSpacing="0.01em">
+              Magopco
+            </Typography>
           </Box>
 
-          {/* Desktop title */}
-          <Typography
-            variant="subtitle1"
-            noWrap
-            fontWeight={500}
-            sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' }, opacity: 0.92 }}
-          >
-            Quality Intelligence Platform
-          </Typography>
+          {/* Inline logo — laptop (permanent sidebar already visible, but show brand in bar) */}
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
+            <MagopcoLogoHorizontal size={30} color="white" textColor="white" />
+          </Box>
 
-          <Box sx={{ flexGrow: { xs: 1, sm: 0 } }} />
+          <Box sx={{ flexGrow: 1 }} />
 
           <Tooltip title={user?.full_name ?? 'Account'}>
             <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} color="inherit" size="small">
@@ -236,44 +226,51 @@ export function MainLayout() {
         </Toolbar>
       </AppBar>
 
-      {/* Sidebar — desktop */}
+      {/* ── Sidebar — laptop only (md+) ─────────────── */}
       <Drawer
         variant="permanent"
         sx={{
           width: DRAWER_WIDTH,
           flexShrink: 0,
-          display: { xs: 'none', sm: 'block' },
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH, boxSizing: 'border-box' },
+          display: { xs: 'none', md: 'block' },
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            boxSizing: 'border-box',
+          },
         }}
         open
       >
         {drawer}
       </Drawer>
 
-      {/* Sidebar — mobile */}
+      {/* ── Sidebar — phone & tablet overlay (below md) */}
       <Drawer
         variant="temporary"
         open={mobileOpen}
         onClose={() => setMobileOpen(false)}
         ModalProps={{ keepMounted: true }}
         sx={{
-          display: { xs: 'block', sm: 'none' },
+          display: { xs: 'block', md: 'none' },
           '& .MuiDrawer-paper': { width: DRAWER_WIDTH },
         }}
       >
         {drawer}
       </Drawer>
 
-      {/* Main content */}
+      {/* ── Main content ─────────────────────────────── */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          mt: 8,
+          // Responsive padding: tighter on phone, comfortable on laptop
+          p: { xs: 2, sm: 2.5, md: 3 },
+          // Space below AppBar
+          mt: { xs: 7, sm: 8 },
           overflow: 'auto',
           bgcolor: 'background.default',
           minHeight: '100vh',
+          // On laptop the permanent drawer pushes the content; on smaller screens it's full width
+          width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` },
         }}
       >
         <Outlet />

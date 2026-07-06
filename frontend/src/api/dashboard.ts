@@ -21,11 +21,12 @@ export interface DashboardData {
   load_status_counts: Record<string, number>
   import_status_counts: Record<string, number>
   // pallet quality
-  total_pallets: number
+  total_pallets: number          // all pallets in DB (including not yet analysed)
+  analysed_pallets: number       // passed + failed + hold (decision has been made)
   passed_pallets: number
   failed_pallets: number
   hold_pallets: number
-  pass_rate: number | null
+  pass_rate: number | null       // passed / analysed_pallets × 100
   // measurement averages
   measurement_averages: MeasurementAverage[]
   packaging_breakdown: {

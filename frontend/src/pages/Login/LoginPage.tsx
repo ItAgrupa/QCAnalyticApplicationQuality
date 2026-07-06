@@ -10,7 +10,7 @@ import { z } from 'zod'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { login, getMe } from '@/api/auth'
 import { useAuthStore } from '@/hooks/useAuthStore'
-import { MagopcoLogoMark } from '@/components/MagopcoLogo'
+import { MagopcoLogoFull, MagopcoLogoHorizontal } from '@/components/MagopcoLogo'
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -56,42 +56,51 @@ export default function LoginPage() {
       sx={{
         display: 'flex',
         minHeight: '100vh',
-        background: 'linear-gradient(145deg, #4A0072 0%, #7B1FA2 40%, #AB47BC 100%)',
+        // Magopco brand gradient: deep purple → primary → light purple
+        background: 'linear-gradient(145deg, #3d004d 0%, #792482 45%, #AB47BC 100%)',
       }}
     >
-      {/* Left panel — branding */}
+      {/* ── Left branding panel — hidden on phone, shown on tablet+ ── */}
       <Box
         sx={{
-          display: { xs: 'none', md: 'flex' },
+          display: { xs: 'none', sm: 'flex' },
           flex: 1,
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
           color: 'white',
-          p: 6,
-          gap: 4,
+          p: { sm: 4, md: 6 },
+          gap: { sm: 3, md: 4 },
         }}
       >
-        <MagopcoLogoMark size={140} color="white" />
+        {/* Full logo — icon above wordmark (portrait version, brand guide secondary) */}
+        <MagopcoLogoFull size={120} color="white" textColor="white" />
 
-        <Box textAlign="center">
-          <Typography variant="h3" fontWeight={800} letterSpacing="0.02em" gutterBottom>
-            Magopco
-          </Typography>
-          <Typography variant="h6" sx={{ opacity: 0.85, fontWeight: 300 }}>
+        <Box textAlign="center" sx={{ maxWidth: 380 }}>
+          <Typography
+            variant="h6"
+            sx={{ opacity: 0.9, fontWeight: 300, letterSpacing: '0.03em', mt: 1 }}
+          >
             Quality Intelligence Platform
+          </Typography>
+          <Typography
+            variant="body2"
+            sx={{ opacity: 0.65, mt: 0.5, fontSize: '0.8rem', letterSpacing: '0.05em', textTransform: 'uppercase' }}
+          >
+            Part of the Agroberries Group
           </Typography>
         </Box>
 
+        {/* Feature bullets */}
         <Box
           sx={{
-            mt: 4,
             display: 'flex',
             flexDirection: 'column',
-            gap: 2,
+            gap: 1.5,
             opacity: 0.8,
-            maxWidth: 360,
-            textAlign: 'center',
+            maxWidth: 340,
+            textAlign: 'left',
+            mt: 2,
           }}
         >
           {[
@@ -100,7 +109,7 @@ export default function LoginPage() {
             'Client-specific quality standards engine',
             'Real-time dashboards & trend analytics',
           ].map((feat) => (
-            <Typography key={feat} variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Typography key={feat} variant="body2" sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
               <Box
                 component="span"
                 sx={{
@@ -114,38 +123,40 @@ export default function LoginPage() {
         </Box>
       </Box>
 
-      {/* Right panel — login form */}
+      {/* ── Right login panel ──────────────────────── */}
       <Box
         sx={{
-          flex: { xs: 1, md: '0 0 440px' },
+          flex: { xs: 1, sm: '0 0 420px', md: '0 0 460px' },
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          p: 3,
+          p: { xs: 2, sm: 3 },
           bgcolor: 'background.default',
         }}
       >
         <Card
           sx={{
             width: '100%',
-            maxWidth: 400,
-            boxShadow: '0 8px 40px rgba(123,31,162,0.15)',
-            border: '1px solid rgba(123,31,162,0.1)',
+            maxWidth: { xs: '100%', sm: 400 },
+            boxShadow: '0 8px 40px rgba(121,36,130,0.15)',
+            border: '1px solid rgba(121,36,130,0.1)',
+            borderRadius: 3,
           }}
         >
-          <CardContent sx={{ p: 4 }}>
-            {/* Mobile logo */}
+          <CardContent sx={{ p: { xs: 3, sm: 4 } }}>
+            {/* Phone: logo at the top of the card */}
             <Box
               sx={{
-                display: { xs: 'flex', md: 'none' },
+                display: { xs: 'flex', sm: 'none' },
                 flexDirection: 'column',
                 alignItems: 'center',
                 mb: 3,
+                gap: 1,
               }}
             >
-              <MagopcoLogoMark size={64} color="#7B1FA2" />
-              <Typography variant="h6" fontWeight={700} color="primary" mt={1}>
-                Magopco
+              <MagopcoLogoHorizontal size={36} color="#792482" />
+              <Typography variant="caption" color="text.secondary" letterSpacing="0.04em" textTransform="uppercase">
+                Quality Intelligence Platform
               </Typography>
             </Box>
 
@@ -153,7 +164,7 @@ export default function LoginPage() {
               Sign in
             </Typography>
             <Typography variant="body2" color="text.secondary" mb={3}>
-              Access the Quality Intelligence Platform
+              Access the Magopco Quality Platform
             </Typography>
 
             {error && (
@@ -203,7 +214,7 @@ export default function LoginPage() {
                 variant="contained"
                 size="large"
                 disabled={loading}
-                sx={{ mt: 3, mb: 1, py: 1.5 }}
+                sx={{ mt: 3, mb: 1, py: 1.5, borderRadius: 2 }}
               >
                 {loading ? <CircularProgress size={22} color="inherit" /> : 'Sign In'}
               </Button>
@@ -212,7 +223,7 @@ export default function LoginPage() {
             <Divider sx={{ my: 3 }} />
 
             <Typography variant="caption" color="text.secondary" display="block" textAlign="center">
-              Magopco Quality Intelligence Platform &nbsp;·&nbsp; v1.0
+              Magopco · v1.0
             </Typography>
           </CardContent>
         </Card>

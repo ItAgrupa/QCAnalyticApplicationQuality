@@ -207,10 +207,11 @@ def get_dashboard(current_user: CurrentUser, db: DB):
         "import_status_counts": import_counts,
         # ── Pallet quality ──
         "total_pallets": total_pallets_all,
+        "analysed_pallets": analysed_pallets,   # = passed + failed + hold (decision made)
         "passed_pallets": passed_pallets,
         "failed_pallets": failed_pallets,
         "hold_pallets": hold_pallets,
-        "pass_rate": pass_rate,
+        "pass_rate": pass_rate,                 # = passed / analysed_pallets × 100
         # ── Measurement averages ──
         "measurement_averages": measurement_averages,
         "packaging_breakdown": packaging_breakdown,

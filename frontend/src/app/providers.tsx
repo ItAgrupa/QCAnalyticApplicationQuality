@@ -12,11 +12,11 @@ const queryClient = new QueryClient({
   },
 })
 
-// Magopco brand colors — extracted from the official logo
-const MAGOPCO_PURPLE = '#7B1FA2'
-const MAGOPCO_PURPLE_LIGHT = '#AB47BC'
-const MAGOPCO_PURPLE_DARK = '#4A0072'
-const MAGOPCO_PURPLE_BG = '#F3E5F5'
+// Magopco official brand colors (Brand Guide 2026, Pantone 2603C primary)
+const MAGOPCO_PURPLE = '#792482'       // Primary: RGB 121 36 130, Pantone 2603C
+const MAGOPCO_PURPLE_LIGHT = '#AF96DB' // Light: RGB 175 150 219, Pantone 2645C
+const MAGOPCO_PURPLE_DARK = '#3d004d'  // Deep dark for gradients
+const MAGOPCO_PURPLE_BG = '#F5EFF9'   // Tinted bg (20% primary)
 
 const theme = createTheme({
   palette: {
@@ -27,9 +27,9 @@ const theme = createTheme({
       contrastText: '#ffffff',
     },
     secondary: {
-      main: '#AB47BC',
-      light: '#CE93D8',
-      dark: '#7B1FA2',
+      main: '#C6168D',       // Pantone 233C secondary pink
+      light: '#AF96DB',      // Pantone 2645C light purple
+      dark: '#792482',
       contrastText: '#ffffff',
     },
     background: {
@@ -65,7 +65,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           background: `linear-gradient(135deg, ${MAGOPCO_PURPLE_DARK} 0%, ${MAGOPCO_PURPLE} 100%)`,
-          boxShadow: '0 2px 12px rgba(123,31,162,0.25)',
+          boxShadow: '0 2px 12px rgba(121,36,130,0.25)',
         },
       },
     },
@@ -79,7 +79,7 @@ const theme = createTheme({
     },
     MuiCard: {
       styleOverrides: {
-        root: { borderRadius: 12, boxShadow: '0 2px 16px rgba(123,31,162,0.08)' },
+        root: { borderRadius: 12, boxShadow: '0 2px 16px rgba(121,36,130,0.08)' },
       },
     },
     MuiChip: {
@@ -111,7 +111,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <ThemeProvider theme={theme}>
         <CssBaseline />
         {children}
-        <ReactQueryDevtools initialIsOpen={false} />
+        {import.meta.env.DEV && <ReactQueryDevtools initialIsOpen={false} />}
       </ThemeProvider>
     </QueryClientProvider>
   )

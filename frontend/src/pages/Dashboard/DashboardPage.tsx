@@ -304,8 +304,13 @@ export default function DashboardPage() {
   const bulk = data?.packaging_breakdown.bulk    ?? {}
   const pkgd = data?.packaging_breakdown.packaged ?? {}
 
-  const passRateNum = data?.pass_rate ?? null
-  const passRateStr = passRateNum != null ? `${passRateNum}%` : '—'
+  const passRateNum    = data?.pass_rate ?? null
+  const passRateStr    = passRateNum != null ? `${passRateNum}%` : '—'
+  // analysed = pallets that have received a decision (PASS + FAIL + HOLD)
+  // Use the server value when available; fall back to summing the three fields
+  const analysedPallets =
+    data?.analysed_pallets ??
+    ((data?.passed_pallets ?? 0) + (data?.failed_pallets ?? 0) + (data?.hold_pallets ?? 0))
 
   return (
     <Box>
@@ -335,47 +340,76 @@ export default function DashboardPage() {
       <Box mb={3}>
         <SectionHeader icon={<KpiIcon fontSize="small" />} title="Key Performance Indicators" />
         <SectionBody>
-          {/* Top KPI row */}
+          {/* Row 1 — Quality outcome: Passed vs Not Passed (Failed + On Hold) */}
+          {(() => {
+            const notPassed = (data?.failed_pallets ?? 0) + (data?.hold_pallets ?? 0)
+            const holdCount  = data?.hold_pallets ?? 0
+            const failCount  = data?.failed_pallets ?? 0
+            const notPassedSub = holdCount > 0
+              ? `${failCount} rejected + ${holdCount} on hold`
+              : 'pallets rejected'
+            return (
+              <Grid container spacing={1.5} mb={1.5}>
+                <Grid item xs={6} sm={4} md={4}>
+                  <KpiCard
+                    label="Pass Rate"
+                    value={passRateStr}
+                    subLabel={
+                      analysedPallets > 0
+                        ? `${data?.passed_pallets ?? 0} of ${analysedPallets} pallets  ·  Target ≥ 95%`
+                        : 'Target ≥ 95%'
+                    }
+                    color={passRateColor(passRateNum)}
+                    loading={isLoading}
+                    barValue={passRateNum ?? undefined}
+                  />
+                </Grid>
+                <Grid item xs={6} sm={4} md={4}>
+                  <KpiCard
+                    label="Passed"
+                    value={data?.passed_pallets ?? 0}
+                    subLabel="pallets accepted"
+                    color="#2e7d32"
+                    loading={isLoading}
+                    barValue={analysedPallets > 0
+                      ? ((data?.passed_pallets ?? 0) / analysedPallets) * 100 : undefined}
+                  />
+                </Grid>
+                <Grid item xs={6} sm={4} md={4}>
+                  <KpiCard
+                    label="Not Passed"
+                    value={notPassed}
+                    subLabel={notPassedSub}
+                    color={notPassed > 0 ? '#c62828' : '#2e7d32'}
+                    loading={isLoading}
+                    barValue={analysedPallets > 0
+                      ? (notPassed / analysedPallets) * 100 : undefined}
+                  />
+                </Grid>
+              </Grid>
+            )
+          })()}
+
+          {/* Row 2 — Volume & pipeline metrics */}
           <Grid container spacing={1.5} mb={2}>
-            <Grid item xs={6} sm={4} md={2}>
+            <Grid item xs={6} sm={4} md={4}>
               <KpiCard
-                label="Pass Rate"
-                value={passRateStr}
-                subLabel="Target ≥ 95%"
-                color={passRateColor(passRateNum)}
-                loading={isLoading}
-                barValue={passRateNum ?? undefined}
-              />
-            </Grid>
-            <Grid item xs={6} sm={4} md={2}>
-              <KpiCard label="Total Pallets" value={data?.total_pallets ?? 0}
-                color="#1565c0" loading={isLoading} />
-            </Grid>
-            <Grid item xs={6} sm={4} md={2}>
-              <KpiCard
-                label="Passed"
-                value={data?.passed_pallets ?? 0}
-                color="#2e7d32"
-                loading={isLoading}
-                barValue={data && data.total_pallets > 0
-                  ? (data.passed_pallets / data.total_pallets) * 100 : undefined}
-              />
-            </Grid>
-            <Grid item xs={6} sm={4} md={2}>
-              <KpiCard
-                label="Failed"
-                value={data?.failed_pallets ?? 0}
-                color={data?.failed_pallets ? '#c62828' : '#2e7d32'}
+                label="Total Pallets"
+                value={data?.total_pallets ?? 0}
+                subLabel={analysedPallets > 0 && (data?.total_pallets ?? 0) > analysedPallets
+                  ? `${(data?.total_pallets ?? 0) - analysedPallets} not yet analysed`
+                  : 'all analysed'}
+                color="#1565c0"
                 loading={isLoading}
               />
             </Grid>
-            <Grid item xs={6} sm={4} md={2}>
+            <Grid item xs={6} sm={4} md={4}>
               <KpiCard label="Total Loads" value={data?.total_loads ?? 0}
                 color="#4527a0" loading={isLoading} />
             </Grid>
-            <Grid item xs={6} sm={4} md={2}>
+            <Grid item xs={6} sm={4} md={4}>
               <KpiCard label="This Month" value={data?.loads_this_month ?? 0}
-                color="#00695c" loading={isLoading} />
+                subLabel="loads inspected" color="#00695c" loading={isLoading} />
             </Grid>
           </Grid>
 

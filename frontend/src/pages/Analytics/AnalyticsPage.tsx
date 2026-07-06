@@ -12,7 +12,7 @@ import {
 } from '@mui/icons-material'
 import {
   Area, BarChart, Bar, ComposedChart, Line,
-  RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis,
+  ReferenceLine,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   ReferenceArea, Cell,
 } from 'recharts'
@@ -507,63 +507,112 @@ function MetricTrendChart({
   )
 }
 
-// ── Defect Radar Chart ────────────────────────────────────────────────────────
-function DefectRadarChart({
+// ── Parameter Pressure Chart ──────────────────────────────────────────────────
+// Shows every parameter as a horizontal bar: avg value as % of its standard max.
+// Green <70% | Amber 70-99% | Red ≥100% (over limit). Works with 1+ parameters.
+function ParameterPressureChart({
   data, loading,
 }: {
   data: ParameterCompliance[]
   loading: boolean
 }) {
-  // Pick defect-type parameters and show % of standard max
-  const DEFECT_CODES = ['mold', 'mould', 'decay', 'bloom', 'major_p1', 'major_p2', 'major_p3', 'firmness']
-  const radarData = useMemo(() => {
-    const hits = data.filter(d => DEFECT_CODES.includes(d.parameter_code) && d.avg_value != null)
-    if (!hits.length) return []
-    return hits.map(d => {
-      const pct = d.std_max && d.avg_value != null
-        ? Math.min(150, Math.round((d.avg_value / d.std_max) * 100))
-        : d.avg_value != null ? Math.min(150, Math.round(d.avg_value)) : 0
-      return {
-        subject: d.parameter_name.replace(/\s*%?\s*$/, ''),
-        value: pct,
-        fullMark: 100,
-      }
-    })
+  const chartData = useMemo(() => {
+    return data
+      .filter(d => d.avg_value != null && d.std_max != null && d.std_max > 0)
+      .map(d => ({
+        name: d.parameter_name.replace(/\s*%?\s*$/, ''),
+        pressure: Math.min(130, Math.round((d.avg_value! / d.std_max!) * 100)),
+        avgValue: d.avg_value,
+        stdMax: d.std_max,
+        unit: d.unit ?? '',
+      }))
+      .sort((a, b) => b.pressure - a.pressure)
   }, [data])
+
+  const barColor = (pct: number) =>
+    pct >= 100 ? C.fail : pct >= 70 ? C.hold : C.pass
+
+  const rowH = 34
+  const chartH = Math.max(180, chartData.length * rowH + 50)
 
   return (
     <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
-      <SectionHeader title="Defect Profile" subtitle="Avg value as % of standard maximum (100% = at limit)" />
-      {loading ? <ChartSkeleton height={280} /> : !radarData.length ? <EmptyChart /> : (
-        <Box p={2} display="flex" justifyContent="center">
-          <ResponsiveContainer width="100%" height={280}>
-            <RadarChart data={radarData} margin={{ top: 10, right: 30, left: 30, bottom: 10 }}>
-              <PolarGrid gridType="polygon" stroke={C.grid} />
-              <PolarAngleAxis dataKey="subject" tick={{ fontSize: 11, fill: '#555' }} />
-              <PolarRadiusAxis angle={30} domain={[0, 120]} tick={{ fontSize: 10, fill: '#aaa' }}
-                tickCount={4} tickFormatter={v => `${v}%`} />
-              <Radar
-                name="Avg % of Standard"
-                dataKey="value"
-                stroke={C.blue}
-                fill={C.blue}
-                fillOpacity={0.18}
-                strokeWidth={2}
+      <SectionHeader
+        title="Parameter Pressure"
+        subtitle="How close each parameter's average is to its standard maximum (100% = at limit)"
+      />
+      {loading ? (
+        <ChartSkeleton height={chartH} />
+      ) : !chartData.length ? (
+        <EmptyChart />
+      ) : (
+        <Box p={2}>
+          <ResponsiveContainer width="100%" height={chartH}>
+            <BarChart
+              data={chartData}
+              layout="vertical"
+              margin={{ top: 4, right: 56, left: 110, bottom: 4 }}
+            >
+              {/* Red zone: over the limit */}
+              <ReferenceArea x1={100} x2={130} fill={alpha(C.fail, 0.06)} />
+              <CartesianGrid strokeDasharray="3 3" stroke={C.grid} horizontal={false} />
+              <XAxis
+                type="number"
+                domain={[0, 130]}
+                tickFormatter={(v: number) => `${v}%`}
+                tick={{ fontSize: 11 }}
+                tickLine={false}
+                axisLine={false}
+                ticks={[0, 25, 50, 75, 100, 125]}
+              />
+              <YAxis
+                type="category"
+                dataKey="name"
+                width={105}
+                tick={{ fontSize: 12 }}
+                tickLine={false}
+                axisLine={false}
+              />
+              {/* Vertical limit line at 100% */}
+              <ReferenceLine
+                x={100}
+                stroke={C.fail}
+                strokeDasharray="4 3"
+                strokeWidth={1.5}
+                label={{ value: 'LIMIT', position: 'top', fontSize: 10, fill: C.fail }}
               />
               <Tooltip
-                formatter={(v: number) => [`${v}%`, 'Avg % of standard']}
+                cursor={{ fill: 'rgba(0,0,0,0.04)' }}
+                formatter={(_val: number, _key: string, props: { payload?: { pressure: number; avgValue: number | null; stdMax: number | null; unit: string } }) => {
+                  const p = props.payload
+                  if (!p) return ['—', '']
+                  return [
+                    `${p.pressure}% of limit  (avg ${p.avgValue} ${p.unit} / max ${p.stdMax} ${p.unit})`,
+                    'Pressure on standard',
+                  ]
+                }}
                 contentStyle={{ fontSize: 12, borderRadius: 8 }}
               />
-            </RadarChart>
+              <Bar dataKey="pressure" radius={[0, 4, 4, 0]} maxBarSize={22}>
+                {chartData.map((entry, i) => (
+                  <Cell key={i} fill={barColor(entry.pressure)} />
+                ))}
+              </Bar>
+            </BarChart>
           </ResponsiveContainer>
-          <Box
-            sx={{
-              position: 'absolute', bottom: 80, right: 40,
-              bgcolor: alpha(C.fail, 0.08), border: `1px dashed ${C.fail}`,
-              borderRadius: 1, px: 1, py: 0.4,
-            }}
-          >
-            <Typography variant="caption" color="error.main">≥100% = exceeds standard</Typography>
+
+          {/* Legend */}
+          <Box sx={{ display: 'flex', gap: 2.5, mt: 1, justifyContent: 'flex-end' }}>
+            {[
+              { color: C.pass, label: 'Good  (<70%)' },
+              { color: C.hold, label: 'Watch  (70–99%)' },
+              { color: C.fail, label: 'Over limit  (≥100%)' },
+            ].map(({ color, label }) => (
+              <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+                <Box sx={{ width: 10, height: 10, borderRadius: '2px', bgcolor: color, flexShrink: 0 }} />
+                <Typography variant="caption" color="text.secondary">{label}</Typography>
+              </Box>
+            ))}
           </Box>
         </Box>
       )}
@@ -778,9 +827,9 @@ export default function AnalyticsPage() {
         />
       </Box>
 
-      {/* ── Row 4: Defect Radar (full width) ────────────────────────────── */}
-      <Box position="relative" mb={2}>
-        <DefectRadarChart
+      {/* ── Row 4: Parameter Pressure (full width) ───────────────────────── */}
+      <Box mb={2}>
+        <ParameterPressureChart
           data={complianceQ.data ?? []}
           loading={complianceQ.isLoading}
         />
