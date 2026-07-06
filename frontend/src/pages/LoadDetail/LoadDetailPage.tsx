@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import {
-  Box, Typography, Chip, Button, Alert, CircularProgress, Paper, Grid,
+  Box, Typography, Chip, Button, Alert, CircularProgress, Paper, Grid2,
   Divider, Table, TableHead, TableBody, TableRow, TableCell, TableContainer,
   Accordion, AccordionSummary, AccordionDetails, Tooltip, LinearProgress,
   IconButton,
@@ -264,34 +264,34 @@ export default function LoadDetailPage() {
       {analyseMut.isPending && <LinearProgress sx={{ mb: 2, borderRadius: 1 }} />}
 
       {/* Score cards */}
-      <Grid container spacing={2} mb={3}>
-        <Grid item xs={6} sm={3}>
+      <Grid2 container spacing={2} mb={3}>
+        <Grid2 size={{ xs: 6, sm: 3 }}>
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary" display="block">Overall Status</Typography>
             <Box mt={0.5}><StatusChip status={load.final_status} /></Box>
           </Paper>
-        </Grid>
-        <Grid item xs={6} sm={3}>
+        </Grid2>
+        <Grid2 size={{ xs: 6, sm: 3 }}>
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary" display="block">Quality Score</Typography>
             <QScore score={load.quality_score} />
           </Paper>
-        </Grid>
-        <Grid item xs={6} sm={3}>
+        </Grid2>
+        <Grid2 size={{ xs: 6, sm: 3 }}>
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary" display="block">Condition Score</Typography>
             <CSScore score={load.condition_score} />
           </Paper>
-        </Grid>
-        <Grid item xs={6} sm={3}>
+        </Grid2>
+        <Grid2 size={{ xs: 6, sm: 3 }}>
           <Paper variant="outlined" sx={{ p: 2, borderRadius: 3, textAlign: 'center' }}>
             <Typography variant="caption" color="text.secondary" display="block">Fails Found</Typography>
             <Typography variant="h4" fontWeight={900} color={failCount > 0 ? 'error.main' : 'success.main'}>
               {failCount}
             </Typography>
           </Paper>
-        </Grid>
-      </Grid>
+        </Grid2>
+      </Grid2>
 
       {load.main_issue && (
         <Alert severity={load.final_status === 'REJECT' ? 'error' : 'warning'} sx={{ mb: 3 }}>
@@ -302,7 +302,7 @@ export default function LoadDetailPage() {
       {/* Load summary */}
       <Paper variant="outlined" sx={{ p: 3, borderRadius: 3, mb: 3 }}>
         <Typography variant="subtitle1" fontWeight={700} gutterBottom>Load Summary</Typography>
-        <Grid container spacing={2}>
+        <Grid2 container spacing={2}>
           {[
             ['Total Pallets', load.total_pallets],
             ['Total Cases', load.total_cases],
@@ -311,12 +311,12 @@ export default function LoadDetailPage() {
             ['Vessel', load.vessel_name],
             ['Place', load.inspection_place],
           ].map(([label, value]) => value != null && (
-            <Grid item xs={6} sm={4} md={2} key={String(label)}>
+            <Grid2 size={{ xs: 6, sm: 4, md: 2 }} key={String(label)}>
               <Typography variant="caption" color="text.secondary">{label}</Typography>
               <Typography variant="body2" fontWeight={600}>{String(value)}</Typography>
-            </Grid>
+            </Grid2>
           ))}
-        </Grid>
+        </Grid2>
 
         {load.summary_measurements.length > 0 && (
           <>
@@ -330,9 +330,9 @@ export default function LoadDetailPage() {
                   <TableRow sx={{ '& th': { bgcolor: '#FAF5FC', fontWeight: 700, fontSize: 11 } }}>
                     <TableCell>Parameter</TableCell>
                     <TableCell>Avg</TableCell>
-                    <TableCell>Min</TableCell>
-                    <TableCell>Max</TableCell>
-                    <TableCell>Standard</TableCell>
+                    <TableCell>Obs. Min</TableCell>
+                    <TableCell>Obs. Max</TableCell>
+                    <TableCell>Standard (min – max)</TableCell>
                     <TableCell>Result</TableCell>
                   </TableRow>
                 </TableHead>
@@ -343,9 +343,21 @@ export default function LoadDetailPage() {
                       <TableCell>{s.average_value != null ? `${s.average_value}${s.unit ? ' ' + s.unit : ''}` : '—'}</TableCell>
                       <TableCell sx={{ color: 'text.secondary' }}>{s.min_value ?? '—'}</TableCell>
                       <TableCell sx={{ color: 'text.secondary' }}>{s.max_value ?? '—'}</TableCell>
-                      <TableCell sx={{ color: 'text.secondary', fontSize: 11 }}>
+                      <TableCell sx={{ fontSize: 11 }}>
                         {s.standard_min != null || s.standard_max != null
-                          ? `${s.standard_min ?? '—'} – ${s.standard_max ?? '—'}${s.unit ? ' ' + s.unit : ''}`
+                          ? (() => {
+                              const isObserved = s.standard_min == s.min_value && s.standard_max == s.max_value
+                              return (
+                                <Box>
+                                  <Box sx={{ color: isObserved ? 'text.disabled' : 'text.secondary' }}>
+                                    {`${s.standard_min ?? '—'} – ${s.standard_max ?? '—'}${s.unit ? ' ' + s.unit : ''}`}
+                                  </Box>
+                                  {isObserved && (
+                                    <Box sx={{ fontSize: 10, color: 'text.disabled', fontStyle: 'italic' }}>observed range</Box>
+                                  )}
+                                </Box>
+                              )
+                            })()
                           : '—'}
                       </TableCell>
                       <TableCell>

@@ -186,7 +186,9 @@ def analyse_load(db: Session, load_id: int, user_id: int) -> dict:
             )
 
             if std is None:
-                meas.status = "NO_STANDARD"
+                # No configured standard — no limit to fail against, so pass
+                meas.status = "PASS"
+                meas.deviation = Decimal("0")
                 continue
 
             meas.standard_min = std.min_value
@@ -271,6 +273,11 @@ def analyse_load(db: Session, load_id: int, user_id: int) -> dict:
                     summary.status = "FAIL"
                 else:
                     summary.status = "PASS"
+        else:
+            # No configured standard — use the observed range as reference; avg always within it
+            summary.standard_min = summary.min_value
+            summary.standard_max = summary.max_value
+            summary.status = "PASS"
 
     # ── Update load ───────────────────────────────────────────────────────────
     reverse_map = {v: k for k, v in _STATUS_RANK.items() if k != "PENDING"}

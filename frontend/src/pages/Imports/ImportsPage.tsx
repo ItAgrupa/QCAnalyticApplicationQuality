@@ -15,7 +15,7 @@ import {
   PlayArrow as ExtractIcon, Add as AddIcon,
   PictureAsPdf as PdfIcon, Close as CloseIcon,
 } from '@mui/icons-material'
-import { DataGrid, type GridColDef } from '@mui/x-data-grid'
+import { DataGrid, type GridColDef, type GridRowSelectionModel } from '@mui/x-data-grid'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   listImports, uploadImport, cancelImport, deleteImport, getImport, quickValidate, reExtract,
@@ -440,6 +440,10 @@ export default function ImportsPage() {
     id: number; file_name: string; status: string
   } | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null)
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
 
   // Page-level drag-over: highlight the upload zone when user drags over the page
   const [pageDragOver, setPageDragOver] = useState(false)
@@ -484,6 +488,17 @@ export default function ImportsPage() {
       setUploading(false)
     }
   }, [qc])
+
+  const handleBulkDelete = async () => {
+    setBulkDeleting(true)
+    for (const id of selectedIds) {
+      try { await deleteImport(id) } catch { /* skip items that can't be deleted */ }
+    }
+    await qc.invalidateQueries({ queryKey: ['imports'] })
+    setBulkDeleting(false)
+    setBulkDeleteOpen(false)
+    setSelectedIds([])
+  }
 
   const columns: GridColDef[] = [
     {
@@ -531,7 +546,7 @@ export default function ImportsPage() {
             )}
             {canWrite && job.status !== 'EXTRACTING' && (
               <Tooltip title="Delete">
-                <IconButton size="small" color="error" onClick={() => deleteMut.mutate(job.id)}>
+                <IconButton size="small" color="error" onClick={() => setConfirmDeleteId(job.id)}>
                   <DeleteIcon fontSize="small" />
                 </IconButton>
               </Tooltip>
@@ -639,6 +654,18 @@ export default function ImportsPage() {
         </TextField>
         <Chip label={`${data?.total ?? 0} total`} size="small" sx={{ alignSelf: 'center' }} />
         {isFetching && <CircularProgress size={16} />}
+        {selectedIds.length > 0 && canWrite && (
+          <Button
+            variant="contained"
+            color="error"
+            size="small"
+            startIcon={<DeleteIcon />}
+            onClick={() => setBulkDeleteOpen(true)}
+            sx={{ ml: 'auto' }}
+          >
+            Delete ({selectedIds.length})
+          </Button>
+        )}
       </Box>
 
       {/* Data grid */}
@@ -647,11 +674,75 @@ export default function ImportsPage() {
         columns={columns}
         loading={isFetching}
         autoHeight
+        checkboxSelection
         disableRowSelectionOnClick
+        rowSelectionModel={selectedIds}
+        onRowSelectionModelChange={(model: GridRowSelectionModel) => setSelectedIds(model as number[])}
         pageSizeOptions={[25, 50]}
         initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
         sx={{ border: 'none', '& .MuiDataGrid-columnHeaders': { bgcolor: '#FAF5FC' } }}
       />
+
+      {/* Single delete confirmation */}
+      {(() => {
+        const target = (data?.items ?? []).find(item => item.id === confirmDeleteId)
+        return (
+          <Dialog open={confirmDeleteId !== null} onClose={() => !deleteMut.isPending && setConfirmDeleteId(null)} maxWidth="xs" fullWidth>
+            <DialogTitle sx={{ fontWeight: 700 }}>Delete this report?</DialogTitle>
+            <DialogContent>
+              <Typography variant="body2" gutterBottom>
+                <strong>{target?.file_name}</strong>
+              </Typography>
+              <Alert severity="warning" sx={{ mt: 1 }}>This cannot be undone.</Alert>
+            </DialogContent>
+            <DialogActions sx={{ p: 2, gap: 1 }}>
+              <Button onClick={() => setConfirmDeleteId(null)} disabled={deleteMut.isPending}>Cancel</Button>
+              <Button
+                variant="contained" color="error"
+                startIcon={deleteMut.isPending ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
+                disabled={deleteMut.isPending}
+                onClick={() => {
+                  if (confirmDeleteId === null) return
+                  deleteMut.mutate(confirmDeleteId, { onSuccess: () => setConfirmDeleteId(null) })
+                }}
+              >
+                {deleteMut.isPending ? 'Deleting…' : 'Delete'}
+              </Button>
+            </DialogActions>
+          </Dialog>
+        )
+      })()}
+
+      {/* Bulk delete confirmation */}
+      <Dialog open={bulkDeleteOpen} onClose={() => !bulkDeleting && setBulkDeleteOpen(false)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ fontWeight: 700 }}>
+          Delete {selectedIds.length} report{selectedIds.length !== 1 ? 's' : ''}?
+        </DialogTitle>
+        <DialogContent>
+          <Typography variant="body2" color="text.secondary" gutterBottom>
+            The following reports will be permanently removed:
+          </Typography>
+          <Box component="ul" sx={{ mt: 1, pl: 2 }}>
+            {(data?.items ?? []).filter(item => selectedIds.includes(item.id)).map(item => (
+              <Typography key={item.id} component="li" variant="body2" noWrap title={item.file_name}>
+                {item.file_name}
+              </Typography>
+            ))}
+          </Box>
+          <Alert severity="warning" sx={{ mt: 2 }}>This cannot be undone.</Alert>
+        </DialogContent>
+        <DialogActions sx={{ p: 2, gap: 1 }}>
+          <Button onClick={() => setBulkDeleteOpen(false)} disabled={bulkDeleting}>Cancel</Button>
+          <Button
+            variant="contained" color="error"
+            startIcon={bulkDeleting ? <CircularProgress size={16} color="inherit" /> : <DeleteIcon />}
+            disabled={bulkDeleting}
+            onClick={handleBulkDelete}
+          >
+            {bulkDeleting ? 'Deleting…' : `Delete ${selectedIds.length}`}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Detail dialog */}
       {detailId && (
