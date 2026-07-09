@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Annotated
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -20,7 +20,7 @@ from app.core.permissions import RoleName
 from app.models.generated_report import GeneratedReport
 from app.models.load import Load
 from app.services.audit_service import log_action
-from app.services.report_generator import generate_pdf, generate_xlsx
+from app.services.report_generator import generate_pdf, generate_xlsx, generate_analytics_pdf
 
 router = APIRouter()
 AdminOrQM = Annotated[CurrentUser, Depends(require_role(RoleName.ADMIN, RoleName.QUALITY_MANAGER))]
@@ -99,6 +99,23 @@ def list_exports(load_id: int, current_user: CurrentUser, db: DB):
         }
         for r in records
     ]
+
+
+@router.post("/analytics/pdf")
+def export_analytics_pdf(
+    current_user: CurrentUser,
+    db: DB,
+    months: int = Query(default=12, ge=1, le=60),
+    client_id: Optional[int] = Query(default=None),
+    period: str = Query(default="monthly"),
+):
+    """Generate and download an analytics summary PDF."""
+    path = generate_analytics_pdf(db, months=months, client_id=client_id, period=period)
+    log_action(db, action="ANALYTICS_EXPORTED", entity_type="Analytics",
+               user_id=current_user.id,
+               new_value={"months": months, "client_id": client_id, "period": period})
+    db.commit()
+    return FileResponse(path=str(path), media_type="application/pdf", filename=path.name)
 
 
 def _assert_load_exists(db: Session, load_id: int):

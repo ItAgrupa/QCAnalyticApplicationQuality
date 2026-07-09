@@ -63,6 +63,7 @@ def analytics_overview(
             func.count(Pallet.id).label("total"),
             func.sum(case((Pallet.status == "PASS", 1), else_=0)).label("passed"),
             func.sum(case((Pallet.status.in_(["FAIL", "REJECT"]), 1), else_=0)).label("failed"),
+            func.sum(case((Pallet.status == "HOLD", 1), else_=0)).label("held"),
         )
         .filter(Pallet.load_id.in_(load_ids))
         .one()
@@ -70,7 +71,8 @@ def analytics_overview(
     total_pallets = pallet_agg.total or 0
     passed = pallet_agg.passed or 0
     failed = pallet_agg.failed or 0
-    analysed = passed + failed
+    held   = pallet_agg.held   or 0
+    analysed = passed + failed + held   # HOLD = not passed, must be in denominator
     pass_rate = round(passed / analysed * 100, 1) if analysed else None
 
     # Avg quality score
@@ -110,7 +112,7 @@ def analytics_overview(
     def _pass_rate_in(after: date, before: Optional[date] = None):
         q = db.query(
             func.sum(case((Pallet.status == "PASS", 1), else_=0)),
-            func.sum(case((Pallet.status.in_(["PASS", "FAIL", "REJECT"]), 1), else_=0)),
+            func.sum(case((Pallet.status.in_(["PASS", "FAIL", "REJECT", "HOLD"]), 1), else_=0)),
         ).join(Load, Pallet.load_id == Load.id).filter(
             Load.inspection_date >= after,
             Load.inspection_date.isnot(None),

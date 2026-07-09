@@ -14,6 +14,7 @@ export interface MeResponse {
   email: string
   role: string
   is_active: boolean
+  email_alerts_enabled: boolean
 }
 
 // ── Roles ─────────────────────────────────────────────────────────────────────
@@ -37,6 +38,7 @@ export interface User {
   email: string
   role: UserRole
   is_active: boolean
+  email_alerts_enabled: boolean
   last_login_at: string | null
   created_at: string
   updated_at: string

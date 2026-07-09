@@ -30,7 +30,9 @@ from app.models.pallet import Pallet
 from app.models.pallet_measurement import PalletMeasurement
 from app.models.quality_standard import QualityStandard
 from app.models.score_rule import ScoreRule
+from app.models.user import User
 from app.services.audit_service import log_action
+from app.services.email_service import send_load_alert
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -302,6 +304,39 @@ def analyse_load(db: Session, load_id: int, user_id: int) -> dict:
         },
     )
     db.commit()
+
+    # ── Email alerts ──────────────────────────────────────────────────────────
+    # Send only when load has pallets that are not passing (HOLD or REJECT/FAIL)
+    not_passed_count = sum(
+        1 for p in load.pallets if p.status in ("FAIL", "REJECT", "HOLD")
+    )
+    if not_passed_count > 0:
+        alert_users = (
+            db.query(User)
+            .filter(User.email_alerts_enabled.is_(True), User.is_active.is_(True))
+            .all()
+        )
+        if alert_users:
+            import os
+            app_url = os.getenv("APP_URL", "http://localhost:5173")
+            client_name = getattr(load.client, "name", "") if hasattr(load, "client") else ""
+            passed_count = sum(1 for p in load.pallets if p.status == "PASS")
+            failed_count = sum(1 for p in load.pallets if p.status in ("FAIL", "REJECT"))
+            held_count   = sum(1 for p in load.pallets if p.status == "HOLD")
+            send_load_alert(
+                recipients    = [u.email for u in alert_users],
+                load_ref      = load.load_reference or f"Load #{load.id}",
+                container     = load.container_number,
+                inspection_date = load.inspection_date.isoformat() if load.inspection_date else "—",
+                client_name   = client_name,
+                total_pallets = len(load.pallets),
+                passed        = passed_count,
+                failed        = failed_count,
+                held          = held_count,
+                issues        = load.main_issue,
+                app_url       = app_url,
+                load_id       = load_id,
+            )
 
     return {
         "load_id": load_id,

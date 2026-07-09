@@ -21,6 +21,7 @@ import {
   listImports, uploadImport, cancelImport, deleteImport, getImport, quickValidate, reExtract,
   type ImportJob, type ParsedPayload,
 } from '@/api/imports'
+import { runAnalysis } from '@/api/loads'
 import { listClients } from '@/api/masterData'
 import { useAuthStore } from '@/hooks/useAuthStore'
 
@@ -104,7 +105,11 @@ function ImportDetailDialog({ importId, onClose }: { importId: number; onClose: 
   })
 
   const quickMut = useMutation({
-    mutationFn: () => quickValidate(importId),
+    mutationFn: async () => {
+      const res = await quickValidate(importId)
+      await runAnalysis(res.load_id)
+      return res
+    },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ['imports'] })
       onClose()
@@ -237,7 +242,7 @@ function ImportDetailDialog({ importId, onClose }: { importId: number; onClose: 
             startIcon={quickMut.isPending ? <CircularProgress size={16} color="inherit" /> : <ValidateIcon />}
             disabled={quickMut.isPending}
             onClick={() => quickMut.mutate()}>
-            {isReady ? 'Validate' : 'Re-validate'}
+            {quickMut.isPending ? 'Validating & Analysing…' : isReady ? 'Validate' : 'Re-validate'}
           </Button>
         )}
       </DialogActions>
@@ -531,7 +536,7 @@ export default function ImportsPage() {
       renderCell: ({ row }) => {
         const job = row as ImportJob
         return (
-          <Box>
+          <Box onClick={e => e.stopPropagation()}>
             <Tooltip title="View details">
               <IconButton size="small" onClick={() => setDetailId(job.id)}>
                 <ViewIcon fontSize="small" />
@@ -678,9 +683,14 @@ export default function ImportsPage() {
         disableRowSelectionOnClick
         rowSelectionModel={selectedIds}
         onRowSelectionModelChange={(model: GridRowSelectionModel) => setSelectedIds(model as number[])}
+        onRowClick={(params) => setDetailId((params.row as ImportJob).id)}
         pageSizeOptions={[25, 50]}
         initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-        sx={{ border: 'none', '& .MuiDataGrid-columnHeaders': { bgcolor: '#FAF5FC' } }}
+        sx={{
+          border: 'none',
+          '& .MuiDataGrid-columnHeaders': { bgcolor: '#FAF5FC' },
+          '& .MuiDataGrid-row': { cursor: 'pointer' },
+        }}
       />
 
       {/* Single delete confirmation */}

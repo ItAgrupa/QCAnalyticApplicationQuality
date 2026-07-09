@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import CurrentUser, DB, require_role
 from app.core.permissions import RoleName
-from app.schemas.user import UserCreate, UserUpdate, UserChangePassword, UserResponse
+from app.schemas.user import UserCreate, UserUpdate, UserChangePassword, UserResponse, UserAlertSettings
 from app.schemas.common import PaginatedResponse
 from app.services import user_service
 
@@ -79,3 +79,16 @@ def reactivate_user(
     db: DB,
 ):
     return user_service.reactivate_user(db, user_id, actor_id=current_user.id)
+
+
+@router.patch("/me/alert-settings", response_model=UserResponse)
+def update_alert_settings(
+    data: UserAlertSettings,
+    current_user: CurrentUser,
+    db: DB,
+):
+    """Any logged-in user can toggle their own email alert preference."""
+    current_user.email_alerts_enabled = data.email_alerts_enabled
+    db.commit()
+    db.refresh(current_user)
+    return current_user

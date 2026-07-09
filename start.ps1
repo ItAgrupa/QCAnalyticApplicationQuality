@@ -42,17 +42,22 @@ $backendEnv = @{
     POSTGRES_PASSWORD    = "qp_dev_password_2026"
     SECRET_KEY           = "dev_secret_key_replace_in_production_must_be_64_chars_minimum_abc123"
     UPLOAD_DIR           = "$ROOT\storage\uploads"
-    CORS_ORIGINS         = "http://localhost:5173"
+    EXPORT_DIR           = "$ROOT\storage\exports"
+    CORS_ORIGINS         = "http://localhost:5173,http://192.168.1.133:5173"
     REDIS_URL            = "redis://localhost:6379/0"
     CELERY_BROKER_URL    = "redis://localhost:6379/1"
     CELERY_RESULT_BACKEND= "redis://localhost:6379/2"
+    SMTP_HOST            = "smtp.gmail.com"
+    SMTP_PORT            = "587"
+    SMTP_USER            = "itagrupamagopco@gmail.com"
+    SMTP_PASSWORD        = ""
+    FROM_EMAIL           = "itagrupamagopco@gmail.com"
+    APP_URL              = "http://192.168.1.133:5173"
     LOG_LEVEL            = "INFO"
     ENVIRONMENT          = "development"
     APP_NAME             = "Quality Intelligence Platform"
     APP_VERSION          = "1.0.0"
 }
-
-$backendEnvStr = ($backendEnv.GetEnumerator() | ForEach-Object { "$($_.Key)=$($_.Value)" }) -join " "
 
 Start-Process -FilePath "powershell.exe" -ArgumentList @(
     "-NoExit",

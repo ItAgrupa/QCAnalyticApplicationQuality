@@ -49,12 +49,17 @@ class UserRoleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserAlertSettings(BaseModel):
+    email_alerts_enabled: bool
+
+
 class UserResponse(BaseModel):
     id: int
     full_name: str
     email: str
     role: UserRoleResponse
     is_active: bool
+    email_alerts_enabled: bool
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime

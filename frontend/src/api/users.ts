@@ -41,6 +41,11 @@ export async function reactivateUser(id: number): Promise<User> {
   return res.data
 }
 
+export async function updateAlertSettings(enabled: boolean): Promise<User> {
+  const res = await axiosClient.patch<User>('/users/me/alert-settings', { email_alerts_enabled: enabled })
+  return res.data
+}
+
 export async function listRoles(): Promise<Role[]> {
   const res = await axiosClient.get<Role[]>('/roles/')
   return res.data

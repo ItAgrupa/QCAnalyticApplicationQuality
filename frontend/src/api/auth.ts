@@ -17,6 +17,7 @@ export interface MeResponse {
   email: string
   role: string
   is_active: boolean
+  email_alerts_enabled: boolean
 }
 
 export async function login(data: LoginRequest): Promise<TokenResponse> {

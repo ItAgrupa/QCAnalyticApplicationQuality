@@ -32,6 +32,7 @@ class MeResponse(BaseModel):
     email: str
     role: str
     is_active: bool
+    email_alerts_enabled: bool
 
     model_config = {"from_attributes": True}
 
@@ -93,6 +94,7 @@ def get_me(current_user: CurrentUser):
         email=current_user.email,
         role=current_user.role.name,
         is_active=current_user.is_active,
+        email_alerts_enabled=current_user.email_alerts_enabled,
     )
 
 

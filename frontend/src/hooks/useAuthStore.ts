@@ -7,12 +7,13 @@ import { useState, useEffect } from 'react'
 interface AuthState {
   isAuthenticated: boolean
   accessToken: string | null
-  user: { id: number; full_name: string; email: string; role: string } | null
+  user: { id: number; full_name: string; email: string; role: string; email_alerts_enabled: boolean } | null
 }
 
 type AuthStore = AuthState & {
   login: (accessToken: string, refreshToken: string, user: AuthState['user']) => void
   logout: () => void
+  setUser: (user: AuthState['user']) => void
 }
 
 // Simple singleton state — replace with Zustand or Context in Phase 2
@@ -58,6 +59,11 @@ export function useAuthStore<T>(selector: (s: AuthStore) => T): T {
       localStorage.removeItem('refresh_token')
       localStorage.removeItem('user')
       _state = { isAuthenticated: false, accessToken: null, user: null }
+      notify()
+    },
+    setUser(user) {
+      if (user) localStorage.setItem('user', JSON.stringify(user))
+      _state = { ..._state, user }
       notify()
     },
   }

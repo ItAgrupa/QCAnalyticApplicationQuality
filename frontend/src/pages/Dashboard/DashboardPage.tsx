@@ -391,27 +391,34 @@ export default function DashboardPage() {
           })()}
 
           {/* Row 2 — Volume & pipeline metrics */}
-          <Grid container spacing={1.5} mb={2}>
-            <Grid item xs={6} sm={4} md={4}>
-              <KpiCard
-                label="Total Pallets"
-                value={data?.total_pallets ?? 0}
-                subLabel={analysedPallets > 0 && (data?.total_pallets ?? 0) > analysedPallets
-                  ? `${(data?.total_pallets ?? 0) - analysedPallets} not yet analysed`
-                  : 'all analysed'}
-                color="#1565c0"
-                loading={isLoading}
-              />
-            </Grid>
-            <Grid item xs={6} sm={4} md={4}>
-              <KpiCard label="Total Loads" value={data?.total_loads ?? 0}
-                color="#4527a0" loading={isLoading} />
-            </Grid>
-            <Grid item xs={6} sm={4} md={4}>
-              <KpiCard label="This Month" value={data?.loads_this_month ?? 0}
-                subLabel="loads inspected" color="#00695c" loading={isLoading} />
-            </Grid>
-          </Grid>
+          {(() => {
+            const totalAll = data?.total_pallets ?? 0
+            const pending  = totalAll - analysedPallets
+            const pendingLabel = pending > 0
+              ? `${pending} pending · ${totalAll} total`
+              : `${totalAll} total`
+            return (
+              <Grid container spacing={1.5} mb={2}>
+                <Grid item xs={6} sm={4} md={4}>
+                  <KpiCard
+                    label="Analysed Pallets"
+                    value={analysedPallets}
+                    subLabel={pendingLabel}
+                    color="#1565c0"
+                    loading={isLoading}
+                  />
+                </Grid>
+                <Grid item xs={6} sm={4} md={4}>
+                  <KpiCard label="Total Loads" value={data?.total_loads ?? 0}
+                    color="#4527a0" loading={isLoading} />
+                </Grid>
+                <Grid item xs={6} sm={4} md={4}>
+                  <KpiCard label="This Month" value={data?.loads_this_month ?? 0}
+                    subLabel="loads inspected" color="#00695c" loading={isLoading} />
+                </Grid>
+              </Grid>
+            )
+          })()}
 
           {/* Measurement parameter KPIs */}
           {(visibleMeas.length > 0 || isLoading) && (

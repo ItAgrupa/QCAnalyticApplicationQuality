@@ -2,14 +2,16 @@ import { useState, useMemo } from 'react'
 import {
   Box, Typography, Paper, Grid, MenuItem, TextField, Chip,
   ToggleButton, ToggleButtonGroup, Skeleton, Alert, Divider,
-  Tooltip as MuiTooltip, IconButton, alpha,
+  Tooltip as MuiTooltip, IconButton, alpha, Button, CircularProgress,
 } from '@mui/material'
 import {
   TrendingUp as TrendUpIcon, TrendingDown as TrendDownIcon,
   TrendingFlat as TrendFlatIcon, Info as InfoIcon,
   Refresh as RefreshIcon, WarningAmber as WarnIcon,
   CheckCircleOutline as PassIcon,
+  PictureAsPdf as PdfIcon,
 } from '@mui/icons-material'
+import axiosClient from '@/api/axiosClient'
 import {
   Area, BarChart, Bar, ComposedChart, Line,
   ReferenceLine,
@@ -428,11 +430,9 @@ function MetricTrendChart({
 }) {
   const PARAMS = [
     { code: 'brix',         label: 'Brix (Sweetness)' },
-    { code: 'mold',         label: 'Mold %' },
-    { code: 'mould',        label: 'Mould %' },
+    { code: 'mold',         label: 'Mold / Mould %' },
     { code: 'decay',        label: 'Decay %' },
     { code: 'bloom',        label: 'Bloom' },
-    { code: 'firmness',     label: 'Firmness' },
     { code: 'major_p1',     label: 'Major Defect P1' },
     { code: 'major_p2',     label: 'Major Defect P2' },
   ]
@@ -634,6 +634,31 @@ export default function AnalyticsPage() {
   const [timePeriod, setTimePeriod] = useState<'weekly' | 'monthly'>('monthly')
   const [clientId, setClientId]   = useState<number | undefined>()
   const [metricCode, setMetricCode] = useState('brix')
+  const [exportingPdf, setExportingPdf] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
+
+  const handleExportPdf = async () => {
+    setExportingPdf(true)
+    setExportError(null)
+    try {
+      const params: Record<string, string | number> = { months, period: timePeriod }
+      if (clientId) params.client_id = clientId
+      const res = await axiosClient.post('/exports/analytics/pdf', null, {
+        params,
+        responseType: 'blob',
+      })
+      const url = URL.createObjectURL(new Blob([res.data], { type: 'application/pdf' }))
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `analytics_report_${months}m.pdf`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportError('Failed to generate PDF. Please try again.')
+    } finally {
+      setExportingPdf(false)
+    }
+  }
 
   const filters = { months, client_id: clientId, period: timePeriod }
 
@@ -713,8 +738,25 @@ export default function AnalyticsPage() {
               <RefreshIcon />
             </IconButton>
           </MuiTooltip>
+
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={exportingPdf ? <CircularProgress size={14} /> : <PdfIcon />}
+            disabled={exportingPdf}
+            onClick={handleExportPdf}
+            sx={{ borderColor: '#792482', color: '#792482', '&:hover': { borderColor: '#792482', bgcolor: 'rgba(121,36,130,0.04)' } }}
+          >
+            Download PDF
+          </Button>
         </Box>
       </Box>
+
+      {exportError && (
+        <Alert severity="error" onClose={() => setExportError(null)} sx={{ mb: 2.5, borderRadius: 2 }}>
+          {exportError}
+        </Alert>
+      )}
 
       {/* ── Insight alert ──────────────────────────────────────────────── */}
       {ov && ov.worst_parameter && ov.worst_compliance_rate != null && ov.worst_compliance_rate < 80 && (

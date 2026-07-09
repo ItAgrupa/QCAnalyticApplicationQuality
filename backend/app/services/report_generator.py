@@ -386,6 +386,333 @@ def generate_xlsx(db: Session, load_id: int) -> Path:
     return out_path
 
 
+# ── Analytics PDF ─────────────────────────────────────────────────────────────
+
+def generate_analytics_pdf(
+    db: Session,
+    months: int = 12,
+    client_id: Optional[int] = None,
+    period: str = "monthly",
+) -> Path:
+    from datetime import timedelta
+    from sqlalchemy import case, func, String
+    from app.models.pallet import Pallet
+    from app.models.pallet_measurement import PalletMeasurement
+    from app.models.client import Client
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+
+    # ── Fetch data using same logic as analytics endpoints ─────────────────────
+    cutoff = date.today() - timedelta(days=months * 30)
+
+    load_q = db.query(Load).filter(
+        Load.inspection_date >= cutoff,
+        Load.inspection_date.isnot(None),
+    )
+    client_name = "All Clients"
+    if client_id:
+        load_q = load_q.filter(Load.client_id == client_id)
+        cl = db.get(Client, client_id)
+        if cl:
+            client_name = cl.name
+    load_ids = [lo.id for lo in load_q.with_entities(Load.id).all()]
+
+    # Overview KPIs
+    passed_total = failed_total = held_total = total_pallets = 0
+    pass_rate = avg_qs = worst_param = worst_rate = None
+    if load_ids:
+        from sqlalchemy import case as sa_case
+        pa = (
+            db.query(
+                func.count(Pallet.id).label("total"),
+                func.sum(sa_case((Pallet.status == "PASS", 1), else_=0)).label("passed"),
+                func.sum(sa_case((Pallet.status.in_(["FAIL", "REJECT"]), 1), else_=0)).label("failed"),
+                func.sum(sa_case((Pallet.status == "HOLD", 1), else_=0)).label("held"),
+            )
+            .filter(Pallet.load_id.in_(load_ids))
+            .one()
+        )
+        total_pallets = pa.total or 0
+        passed_total  = pa.passed or 0
+        failed_total  = pa.failed or 0
+        held_total    = pa.held   or 0
+        analysed = passed_total + failed_total + held_total
+        pass_rate = round(passed_total / analysed * 100, 1) if analysed else None
+
+        avg_qs = (
+            db.query(func.avg(Load.quality_score))
+            .filter(Load.id.in_(load_ids), Load.quality_score.isnot(None))
+            .scalar()
+        )
+
+        param_agg = (
+            db.query(
+                PalletMeasurement.parameter_name,
+                func.count(PalletMeasurement.id).label("total"),
+                func.sum(sa_case((PalletMeasurement.status == "PASS", 1), else_=0)).label("passed"),
+            )
+            .join(Pallet, PalletMeasurement.pallet_id == Pallet.id)
+            .filter(Pallet.load_id.in_(load_ids), PalletMeasurement.status.in_(["PASS", "FAIL"]))
+            .group_by(PalletMeasurement.parameter_name)
+            .having(func.count(PalletMeasurement.id) >= 3)
+            .all()
+        )
+        for row in param_agg:
+            cr = round(row.passed / row.total * 100, 1) if row.total else None
+            if cr is not None and (worst_rate is None or cr < worst_rate):
+                worst_rate = cr
+                worst_param = row.parameter_name
+
+    # Quality trends
+    trunc_expr = func.date_trunc("month" if period == "monthly" else "week", Load.inspection_date)
+    pallet_trend = (
+        db.query(
+            trunc_expr.cast(String).label("period"),
+            func.count(Pallet.id).label("total"),
+            func.sum(case((Pallet.status == "PASS", 1), else_=0)).label("passed"),
+            func.sum(case((Pallet.status.in_(["FAIL", "REJECT"]), 1), else_=0)).label("failed"),
+            func.sum(case((Pallet.status == "HOLD", 1), else_=0)).label("held"),
+        )
+        .join(Load, Pallet.load_id == Load.id)
+        .filter(Load.inspection_date >= cutoff, Load.inspection_date.isnot(None),
+                Pallet.status.isnot(None))
+        .group_by("period").order_by("period")
+    )
+    if client_id:
+        pallet_trend = pallet_trend.filter(Load.client_id == client_id)
+    trend_rows = pallet_trend.all()
+
+    # Parameter compliance
+    compliance_rows = []
+    if load_ids:
+        compliance_rows = (
+            db.query(
+                PalletMeasurement.parameter_name,
+                PalletMeasurement.unit,
+                func.count(PalletMeasurement.id).label("total"),
+                func.sum(case((PalletMeasurement.status == "PASS", 1), else_=0)).label("passed"),
+                func.avg(PalletMeasurement.value_numeric).label("avg_value"),
+                func.max(PalletMeasurement.standard_max).label("std_max"),
+            )
+            .join(Pallet, PalletMeasurement.pallet_id == Pallet.id)
+            .filter(
+                Pallet.load_id.in_(load_ids),
+                PalletMeasurement.status.in_(["PASS", "FAIL"]),
+                PalletMeasurement.value_numeric.isnot(None),
+            )
+            .group_by(PalletMeasurement.parameter_name, PalletMeasurement.unit)
+            .having(func.count(PalletMeasurement.id) >= 2)
+            .order_by(func.count(PalletMeasurement.id).desc())
+            .all()
+        )
+
+    # Grower performance
+    grower_rows = []
+    if load_ids:
+        grower_rows = (
+            db.query(
+                Pallet.grower_code,
+                func.count(Pallet.id).label("total"),
+                func.sum(case((Pallet.status == "PASS", 1), else_=0)).label("passed"),
+                func.sum(case((Pallet.status.in_(["FAIL", "REJECT"]), 1), else_=0)).label("failed"),
+                func.sum(case((Pallet.status == "HOLD", 1), else_=0)).label("held"),
+            )
+            .filter(
+                Pallet.load_id.in_(load_ids),
+                Pallet.grower_code.isnot(None), Pallet.grower_code != "",
+                Pallet.status.in_(["PASS", "FAIL", "REJECT", "HOLD"]),
+            )
+            .group_by(Pallet.grower_code)
+            .order_by(func.count(Pallet.id).desc())
+            .limit(15)
+            .all()
+        )
+
+    # ── Build PDF ──────────────────────────────────────────────────────────────
+    out_dir = Path(settings.EXPORT_DIR) / "analytics"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"analytics_{uuid.uuid4().hex[:8]}.pdf"
+
+    doc = SimpleDocTemplate(str(out_path), pagesize=A4,
+                            leftMargin=2*cm, rightMargin=2*cm,
+                            topMargin=2*cm, bottomMargin=2*cm)
+
+    styles = getSampleStyleSheet()
+    brand  = colors.Color(*[c / 255 for c in _PURPLE])
+    pass_c = colors.Color(*[c / 255 for c in _PASS])
+    hold_c = colors.Color(*[c / 255 for c in _HOLD])
+    rej_c  = colors.Color(*[c / 255 for c in _REJECT])
+
+    title_style = ParagraphStyle("title", parent=styles["Heading1"],
+                                 textColor=brand, fontSize=18, spaceAfter=4)
+    h2_style    = ParagraphStyle("h2", parent=styles["Heading2"],
+                                 textColor=brand, fontSize=11, spaceBefore=12, spaceAfter=4)
+    small       = ParagraphStyle("small", parent=styles["Normal"], fontSize=8, textColor=colors.grey)
+
+    def _tbl(rows, col_widths=None, extra_styles=None):
+        base = [
+            ("BACKGROUND", (0, 0), (-1, 0), brand),
+            ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+            ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE",   (0, 0), (-1, -1), 8),
+            ("GRID",       (0, 0), (-1, -1), 0.5, colors.lightgrey),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.Color(0.98, 0.97, 0.99)]),
+            ("ALIGN",      (1, 0), (-1, -1), "CENTER"),
+            ("TOPPADDING",    (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]
+        if extra_styles:
+            base.extend(extra_styles)
+        t = Table(rows, colWidths=col_widths, repeatRows=1)
+        t.setStyle(TableStyle(base))
+        return t
+
+    def _rate_color(rate):
+        if rate is None: return colors.grey
+        if rate >= 85: return pass_c
+        if rate >= 60: return hold_c
+        return rej_c
+
+    story = []
+
+    # Title
+    period_label = f"Last {months} months" if months < 36 else "All time"
+    story.append(Paragraph("MAGOPCO", title_style))
+    story.append(Paragraph("Quality Analytics Report", styles["Heading2"]))
+    story.append(HRFlowable(width="100%", color=brand, thickness=2, spaceAfter=6))
+    story.append(Paragraph(
+        f"Period: {period_label} · Client: {client_name} · "
+        f"Generated: {datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC",
+        small,
+    ))
+    story.append(Spacer(1, 0.4*cm))
+
+    # KPI summary table
+    story.append(Paragraph("Key Performance Indicators", h2_style))
+    kpi_data = [
+        ["Overall Pass Rate", "Avg Quality Score", "Loads Analysed", "Total Pallets", "Biggest Risk"],
+        [
+            f"{pass_rate}%" if pass_rate is not None else "—",
+            str(round(float(avg_qs), 1)) if avg_qs else "—",
+            str(len(load_ids)),
+            str(total_pallets),
+            f"{worst_param}\n({worst_rate}%)" if worst_param else "None",
+        ],
+    ]
+    kpi_t = Table(kpi_data, colWidths=[3.6*cm]*5)
+    kpi_style = TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), brand),
+        ("TEXTCOLOR",  (0, 0), (-1, 0), colors.white),
+        ("FONTNAME",   (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 0), (-1, -1), 9),
+        ("ALIGN",      (0, 0), (-1, -1), "CENTER"),
+        ("GRID",       (0, 0), (-1, -1), 0.5, colors.lightgrey),
+        ("FONTNAME",   (0, 1), (-1, 1), "Helvetica-Bold"),
+        ("FONTSIZE",   (0, 1), (-1, 1), 12),
+        ("TOPPADDING",    (0, 0), (-1, -1), 6),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+    ])
+    if pass_rate is not None:
+        kpi_style.add("TEXTCOLOR", (0, 1), (0, 1), _rate_color(pass_rate))
+    if worst_param and worst_rate is not None and worst_rate < 70:
+        kpi_style.add("TEXTCOLOR", (4, 1), (4, 1), rej_c)
+    kpi_t.setStyle(kpi_style)
+    story.append(kpi_t)
+    story.append(Spacer(1, 0.3*cm))
+
+    # Quality trends table
+    if trend_rows:
+        story.append(Paragraph("Quality Trends by Period", h2_style))
+        t_rows = [["Period", "Pallets", "Passed", "Hold", "Failed", "Pass Rate %"]]
+        extra = []
+        for r in trend_rows:
+            passed  = int(r.passed or 0)
+            failed  = int(r.failed or 0)
+            held    = int(r.held   or 0)
+            total   = int(r.total  or 0)
+            analysed = passed + failed + held
+            pr = round(passed / analysed * 100, 1) if analysed else None
+            row_i = len(t_rows)
+            t_rows.append([
+                str(r.period)[:10],
+                str(total), str(passed), str(held), str(failed),
+                f"{pr}%" if pr is not None else "—",
+            ])
+            if pr is not None:
+                c_ = pass_c if pr >= 85 else (hold_c if pr >= 60 else rej_c)
+                extra += [("TEXTCOLOR", (-1, row_i), (-1, row_i), c_),
+                          ("FONTNAME",  (-1, row_i), (-1, row_i), "Helvetica-Bold")]
+        story.append(_tbl(t_rows, col_widths=[3.5*cm, 2.5*cm, 2.5*cm, 2.5*cm, 2.5*cm, 2.5*cm], extra_styles=extra))
+        story.append(Spacer(1, 0.3*cm))
+
+    # Parameter compliance table
+    if compliance_rows:
+        story.append(Paragraph("Parameter Compliance", h2_style))
+        c_rows = [["Parameter", "Unit", "Total", "Passed", "Compliance %", "Avg Value", "Std Max"]]
+        extra = []
+        for r in compliance_rows:
+            total_r = int(r.total)
+            passed_r = int(r.passed or 0)
+            cr = round(passed_r / total_r * 100, 1) if total_r else None
+            row_i = len(c_rows)
+            c_rows.append([
+                r.parameter_name,
+                r.unit or "—",
+                str(total_r),
+                str(passed_r),
+                f"{cr}%" if cr is not None else "—",
+                str(round(float(r.avg_value), 2)) if r.avg_value else "—",
+                str(round(float(r.std_max), 2)) if r.std_max else "—",
+            ])
+            if cr is not None:
+                c_ = pass_c if cr >= 90 else (hold_c if cr >= 70 else rej_c)
+                extra += [("TEXTCOLOR", (4, row_i), (4, row_i), c_),
+                          ("FONTNAME",  (4, row_i), (4, row_i), "Helvetica-Bold")]
+        story.append(_tbl(c_rows, col_widths=[4.5*cm, 1.5*cm, 1.5*cm, 1.8*cm, 2.5*cm, 2.2*cm, 2.2*cm], extra_styles=extra))
+        story.append(Spacer(1, 0.3*cm))
+
+    # Grower performance table
+    if grower_rows:
+        story.append(Paragraph("Grower Performance", h2_style))
+        g_rows = [["Grower Code", "Total Pallets", "Passed", "Hold", "Failed", "Pass Rate %", "Fail Rate %"]]
+        extra = []
+        for r in grower_rows:
+            p_ = int(r.passed or 0)
+            f_ = int(r.failed or 0)
+            h_ = int(r.held   or 0)
+            t_ = int(r.total  or 0)
+            an_ = p_ + f_ + h_
+            pr_ = round(p_ / an_ * 100, 1) if an_ else None
+            fr_ = round(f_ / an_ * 100, 1) if an_ else None
+            row_i = len(g_rows)
+            g_rows.append([
+                r.grower_code or "—",
+                str(t_), str(p_), str(h_), str(f_),
+                f"{pr_}%" if pr_ is not None else "—",
+                f"{fr_}%" if fr_ is not None else "—",
+            ])
+            if pr_ is not None:
+                c_ = pass_c if pr_ >= 85 else (hold_c if pr_ >= 60 else rej_c)
+                extra += [("TEXTCOLOR", (5, row_i), (5, row_i), c_),
+                          ("FONTNAME",  (5, row_i), (5, row_i), "Helvetica-Bold")]
+        story.append(_tbl(g_rows, col_widths=[3.5*cm, 2.8*cm, 2*cm, 2*cm, 2*cm, 2.3*cm, 2.3*cm], extra_styles=extra))
+
+    # Footer
+    story.append(Spacer(1, 0.5*cm))
+    story.append(HRFlowable(width="100%", color=colors.lightgrey, spaceAfter=4))
+    story.append(Paragraph(
+        f"Magopco Quality Intelligence Platform · Analytics Report · "
+        f"{datetime.utcnow().strftime('%Y-%m-%d %H:%M')} UTC",
+        small,
+    ))
+
+    doc.build(story)
+    return out_path
+
+
 # ── Shared loader ─────────────────────────────────────────────────────────────
 
 def _load_with_relations(db: Session, load_id: int) -> Load:
