@@ -31,8 +31,13 @@ from app.models.pallet_measurement import PalletMeasurement
 from app.models.quality_standard import QualityStandard
 from app.models.score_rule import ScoreRule
 from app.models.user import User
+from app.schemas.user import NotificationPrefs
 from app.services.audit_service import log_action
-from app.services.email_service import send_load_alert
+from app.services.email_service import (
+    send_load_alert,
+    send_all_passed_alert,
+    send_analysis_done_alert,
+)
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -306,37 +311,97 @@ def analyse_load(db: Session, load_id: int, user_id: int) -> dict:
     db.commit()
 
     # ── Email alerts ──────────────────────────────────────────────────────────
-    # Send only when load has pallets that are not passing (HOLD or REJECT/FAIL)
-    not_passed_count = sum(
-        1 for p in load.pallets if p.status in ("FAIL", "REJECT", "HOLD")
+    import os
+    app_url = os.getenv("APP_URL", "http://localhost:5173")
+    client_name = getattr(load.client, "name", "") if hasattr(load, "client") else ""
+    passed_count = sum(1 for p in load.pallets if p.status == "PASS")
+    failed_count = sum(1 for p in load.pallets if p.status in ("FAIL", "REJECT"))
+    held_count   = sum(1 for p in load.pallets if p.status == "HOLD")
+    total_count  = len(load.pallets)
+    pass_rate    = (passed_count / total_count * 100) if total_count > 0 else 0.0
+    load_ref     = load.load_reference or f"Load #{load.id}"
+    insp_date    = load.inspection_date.isoformat() if load.inspection_date else "—"
+
+    alert_users = (
+        db.query(User)
+        .filter(User.email_alerts_enabled.is_(True), User.is_active.is_(True))
+        .all()
     )
-    if not_passed_count > 0:
-        alert_users = (
-            db.query(User)
-            .filter(User.email_alerts_enabled.is_(True), User.is_active.is_(True))
-            .all()
+
+    reject_to: list[str] = []
+    hold_to: list[str] = []
+    pass_to: list[str] = []
+    done_to: list[str] = []
+
+    for u in alert_users:
+        prefs = NotificationPrefs(**(u.notification_prefs or {}))
+
+        if prefs.notify_analysis_done:
+            done_to.append(u.email)
+
+        if failed_count > 0 and prefs.notify_on_reject:
+            reject_to.append(u.email)
+        elif held_count > 0 and prefs.notify_on_hold:
+            hold_to.append(u.email)
+
+        if load.final_status == "PASS" and prefs.notify_all_passed:
+            pass_to.append(u.email)
+
+        if (
+            prefs.pass_rate_threshold is not None
+            and pass_rate < prefs.pass_rate_threshold
+            and u.email not in reject_to
+            and u.email not in hold_to
+        ):
+            hold_to.append(u.email)
+
+    combined_alert = list(set(reject_to + hold_to))
+    if combined_alert:
+        send_load_alert(
+            recipients      = combined_alert,
+            load_ref        = load_ref,
+            container       = load.container_number,
+            inspection_date = insp_date,
+            client_name     = client_name,
+            total_pallets   = total_count,
+            passed          = passed_count,
+            failed          = failed_count,
+            held            = held_count,
+            issues          = load.main_issue,
+            app_url         = app_url,
+            load_id         = load_id,
         )
-        if alert_users:
-            import os
-            app_url = os.getenv("APP_URL", "http://localhost:5173")
-            client_name = getattr(load.client, "name", "") if hasattr(load, "client") else ""
-            passed_count = sum(1 for p in load.pallets if p.status == "PASS")
-            failed_count = sum(1 for p in load.pallets if p.status in ("FAIL", "REJECT"))
-            held_count   = sum(1 for p in load.pallets if p.status == "HOLD")
-            send_load_alert(
-                recipients    = [u.email for u in alert_users],
-                load_ref      = load.load_reference or f"Load #{load.id}",
-                container     = load.container_number,
-                inspection_date = load.inspection_date.isoformat() if load.inspection_date else "—",
-                client_name   = client_name,
-                total_pallets = len(load.pallets),
-                passed        = passed_count,
-                failed        = failed_count,
-                held          = held_count,
-                issues        = load.main_issue,
-                app_url       = app_url,
-                load_id       = load_id,
-            )
+
+    if pass_to:
+        send_all_passed_alert(
+            recipients      = list(set(pass_to)),
+            load_ref        = load_ref,
+            container       = load.container_number,
+            inspection_date = insp_date,
+            client_name     = client_name,
+            total_pallets   = total_count,
+            pass_rate       = pass_rate,
+            app_url         = app_url,
+            load_id         = load_id,
+        )
+
+    remaining_done = [e for e in done_to if e not in combined_alert and e not in pass_to]
+    if remaining_done:
+        send_analysis_done_alert(
+            recipients      = list(set(remaining_done)),
+            load_ref        = load_ref,
+            container       = load.container_number,
+            inspection_date = insp_date,
+            client_name     = client_name,
+            total_pallets   = total_count,
+            passed          = passed_count,
+            failed          = failed_count,
+            held            = held_count,
+            final_status    = load.final_status or "PENDING",
+            pass_rate       = pass_rate,
+            app_url         = app_url,
+            load_id         = load_id,
+        )
 
     return {
         "load_id": load_id,

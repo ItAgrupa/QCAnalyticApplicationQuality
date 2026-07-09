@@ -1,6 +1,8 @@
 from sqlalchemy import BigInteger, Boolean, ForeignKey, String, DateTime
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from datetime import datetime
+from typing import Any
 
 from app.db.base import Base, TimestampMixin
 
@@ -15,6 +17,7 @@ class User(Base, TimestampMixin):
     role_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("roles.id"), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     email_alerts_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    notification_prefs: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, default=dict, server_default='{}')
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     role: Mapped["Role"] = relationship("Role", back_populates="users")

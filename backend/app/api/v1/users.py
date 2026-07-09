@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, status
 
 from app.api.deps import CurrentUser, DB, require_role
 from app.core.permissions import RoleName
-from app.schemas.user import UserCreate, UserUpdate, UserChangePassword, UserResponse, UserAlertSettings
+from app.schemas.user import UserCreate, UserUpdate, UserChangePassword, UserResponse, UserAlertSettings, NotificationPrefs
 from app.schemas.common import PaginatedResponse
 from app.services import user_service
 
@@ -87,8 +87,9 @@ def update_alert_settings(
     current_user: CurrentUser,
     db: DB,
 ):
-    """Any logged-in user can toggle their own email alert preference."""
+    """Any logged-in user can update their own email alert preferences."""
     current_user.email_alerts_enabled = data.email_alerts_enabled
+    current_user.notification_prefs = data.notification_prefs.model_dump()
     db.commit()
     db.refresh(current_user)
     return current_user

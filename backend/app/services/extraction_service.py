@@ -11,6 +11,9 @@ import pdfplumber
 from app.db.session import SessionLocal
 from app.models.import_job import ImportJob
 from app.models.import_raw_payload import ImportRawPayload
+from app.models.user import User
+from app.schemas.user import NotificationPrefs
+from app.services.email_service import send_import_ready_alert
 from app.services.parsers.registry import detect_parser, get_parser
 
 logger = logging.getLogger(__name__)
@@ -62,6 +65,30 @@ def run_extraction_sync(import_id: int, db=None) -> dict:
         job.extraction_confidence = Decimal(str(round(result.confidence, 2)))
         job.error_message = None
         db.commit()
+
+        # Notify users who subscribed to import-ready alerts
+        import os
+        app_url = os.getenv("APP_URL", "http://localhost:5173")
+        client_name = job.client.name if job.client else "Unknown"
+        alert_users = (
+            db.query(User)
+            .filter(User.email_alerts_enabled.is_(True), User.is_active.is_(True))
+            .all()
+        )
+        ready_recipients = [
+            u.email for u in alert_users
+            if NotificationPrefs(**(u.notification_prefs or {})).notify_import_ready
+        ]
+        if ready_recipients:
+            send_import_ready_alert(
+                recipients   = ready_recipients,
+                file_name    = job.file_name,
+                client_name  = client_name,
+                confidence   = float(result.confidence),
+                pallet_count = len(result.pallets),
+                import_id    = import_id,
+                app_url      = app_url,
+            )
 
         return {
             "status": "READY_FOR_VALIDATION",

@@ -3,11 +3,19 @@
  * Phase 2 will wire this up to real JWT refresh logic.
  */
 import { useState, useEffect } from 'react'
+import type { NotificationPrefs } from '@/types'
 
 interface AuthState {
   isAuthenticated: boolean
   accessToken: string | null
-  user: { id: number; full_name: string; email: string; role: string; email_alerts_enabled: boolean } | null
+  user: {
+    id: number
+    full_name: string
+    email: string
+    role: string
+    email_alerts_enabled: boolean
+    notification_prefs?: NotificationPrefs
+  } | null
 }
 
 type AuthStore = AuthState & {

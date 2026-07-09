@@ -7,6 +7,29 @@ export interface PaginatedResponse<T> {
   pages: number
 }
 
+// ── Notification preferences ──────────────────────────────────────────────────
+export interface NotificationPrefs {
+  notify_on_reject: boolean
+  notify_on_hold: boolean
+  notify_all_passed: boolean
+  notify_analysis_done: boolean
+  notify_import_ready: boolean
+  pass_rate_threshold: number | null
+  digest_enabled: boolean
+  digest_time: string
+}
+
+export const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = {
+  notify_on_reject: true,
+  notify_on_hold: true,
+  notify_all_passed: false,
+  notify_analysis_done: false,
+  notify_import_ready: false,
+  pass_rate_threshold: null,
+  digest_enabled: false,
+  digest_time: '08:00',
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 export interface MeResponse {
   id: number
@@ -15,6 +38,7 @@ export interface MeResponse {
   role: string
   is_active: boolean
   email_alerts_enabled: boolean
+  notification_prefs?: NotificationPrefs
 }
 
 // ── Roles ─────────────────────────────────────────────────────────────────────
@@ -39,6 +63,7 @@ export interface User {
   role: UserRole
   is_active: boolean
   email_alerts_enabled: boolean
+  notification_prefs?: NotificationPrefs
   last_login_at: string | null
   created_at: string
   updated_at: string

@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class UserCreate(BaseModel):
@@ -49,8 +49,22 @@ class UserRoleResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class NotificationPrefs(BaseModel):
+    """Per-user granular notification preferences (stored as JSONB on User)."""
+    notify_on_reject: bool = True
+    notify_on_hold: bool = True
+    notify_all_passed: bool = False
+    notify_analysis_done: bool = False
+    notify_import_ready: bool = False
+    pass_rate_threshold: int | None = Field(default=None, ge=0, le=100)
+    digest_enabled: bool = False
+    digest_time: str = "08:00"
+
+
 class UserAlertSettings(BaseModel):
+    """Request body for PATCH /users/me/alert-settings."""
     email_alerts_enabled: bool
+    notification_prefs: NotificationPrefs = Field(default_factory=NotificationPrefs)
 
 
 class UserResponse(BaseModel):
@@ -60,8 +74,18 @@ class UserResponse(BaseModel):
     role: UserRoleResponse
     is_active: bool
     email_alerts_enabled: bool
+    notification_prefs: NotificationPrefs = Field(default_factory=NotificationPrefs)
     last_login_at: datetime | None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @field_validator("notification_prefs", mode="before")
+    @classmethod
+    def coerce_prefs(cls, v):
+        if v is None or v == {}:
+            return NotificationPrefs()
+        if isinstance(v, dict):
+            return NotificationPrefs(**{k: val for k, val in v.items() if k in NotificationPrefs.model_fields})
+        return v

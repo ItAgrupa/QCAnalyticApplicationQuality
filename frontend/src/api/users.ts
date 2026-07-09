@@ -1,5 +1,5 @@
 import axiosClient from './axiosClient'
-import type { User, UserCreate, UserUpdate, PaginatedResponse, Role } from '@/types'
+import type { User, UserCreate, UserUpdate, PaginatedResponse, Role, NotificationPrefs } from '@/types'
 
 export async function listUsers(params: {
   page?: number
@@ -41,8 +41,14 @@ export async function reactivateUser(id: number): Promise<User> {
   return res.data
 }
 
-export async function updateAlertSettings(enabled: boolean): Promise<User> {
-  const res = await axiosClient.patch<User>('/users/me/alert-settings', { email_alerts_enabled: enabled })
+export async function updateNotificationSettings(
+  enabled: boolean,
+  prefs: NotificationPrefs,
+): Promise<User> {
+  const res = await axiosClient.patch<User>('/users/me/alert-settings', {
+    email_alerts_enabled: enabled,
+    notification_prefs: prefs,
+  })
   return res.data
 }
 
