@@ -140,8 +140,10 @@ from sqlalchemy.orm import joinedload
 
 def list_clients(db: Session, page=1, page_size=50, search: str | None = None,
                  include_inactive=False) -> PaginatedResponse:
+    from app.schemas.client import ClientResponse  # local import avoids circular
     q = db.query(Client).options(
-        joinedload(Client.country), joinedload(Client.market)
+        joinedload(Client.country), joinedload(Client.market),
+        joinedload(Client.templates),
     )
     if not include_inactive:
         q = q.filter(Client.is_active == True)  # noqa
@@ -152,7 +154,8 @@ def list_clients(db: Session, page=1, page_size=50, search: str | None = None,
             func.lower(Client.client_code).like(term)
         )
     items, total = _paginate(q.order_by(Client.name), page, page_size)
-    return _make_page(items, total, page, page_size)
+    serialized = [ClientResponse.from_orm_with_template(c) for c in items]
+    return _make_page(serialized, total, page, page_size)
 
 
 def get_client(db: Session, client_id: int) -> Client:
@@ -336,6 +339,7 @@ from app.schemas.standard import QualityStandardCreate, QualityStandardUpdate
 
 def list_standards(db: Session, client_id: int | None = None, product_id: int | None = None,
                    variety_id: int | None = None, packaging_type_id: int | None = None,
+                   parameter_group: str | None = None,
                    page=1, page_size=100, active_only=True) -> PaginatedResponse:
     q = db.query(QualityStandard)
     if active_only:
@@ -348,11 +352,52 @@ def list_standards(db: Session, client_id: int | None = None, product_id: int | 
         q = q.filter(QualityStandard.variety_id == variety_id)
     if packaging_type_id:
         q = q.filter(QualityStandard.packaging_type_id == packaging_type_id)
+    if parameter_group:
+        q = q.filter(QualityStandard.parameter_group == parameter_group)
     items, total = _paginate(
         q.order_by(QualityStandard.parameter_group, QualityStandard.parameter_code),
         page, page_size,
     )
     return _make_page(items, total, page, page_size)
+
+
+def list_standard_groups(db: Session, client_id: int | None = None) -> list[dict]:
+    q = (
+        db.query(QualityStandard.parameter_group, func.count(QualityStandard.id).label("count"))
+        .filter(
+            QualityStandard.is_active == True,  # noqa
+            QualityStandard.parameter_group.isnot(None),
+            QualityStandard.parameter_group != "",
+        )
+    )
+    if client_id:
+        q = q.filter(QualityStandard.client_id == client_id)
+    rows = q.group_by(QualityStandard.parameter_group).order_by(QualityStandard.parameter_group).all()
+    return [{"name": r.parameter_group, "count": r.count} for r in rows]
+
+
+def rename_standard_group(db: Session, old_name: str, new_name: str, actor_id: int) -> int:
+    count = (
+        db.query(QualityStandard)
+        .filter(QualityStandard.parameter_group == old_name)
+        .update({"parameter_group": new_name}, synchronize_session=False)
+    )
+    log_action(db, "GROUP_RENAMED", "QualityStandard", None, actor_id,
+               old_value={"group": old_name}, new_value={"group": new_name, "affected": count})
+    db.commit()
+    return count
+
+
+def unassign_standard_group(db: Session, name: str, actor_id: int) -> int:
+    count = (
+        db.query(QualityStandard)
+        .filter(QualityStandard.parameter_group == name)
+        .update({"parameter_group": None}, synchronize_session=False)
+    )
+    log_action(db, "GROUP_UNASSIGNED", "QualityStandard", None, actor_id,
+               old_value={"group": name, "affected": count})
+    db.commit()
+    return count
 
 
 def create_standard(db: Session, data: QualityStandardCreate, actor_id: int) -> QualityStandard:

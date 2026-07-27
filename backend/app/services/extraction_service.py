@@ -14,6 +14,7 @@ from app.models.import_raw_payload import ImportRawPayload
 from app.models.user import User
 from app.schemas.user import NotificationPrefs
 from app.services.email_service import send_import_ready_alert
+from app.models.report_template import ReportTemplate
 from app.services.parsers.registry import detect_parser, get_parser
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,38 @@ def run_extraction_sync(import_id: int, db=None) -> dict:
             first_page_text = pdf.pages[0].extract_text() or "" if pdf.pages else ""
             page_count = len(pdf.pages)
 
-        parser = detect_parser(first_page_text) or get_parser("agroberries_v1")
+        # Prefer the parser configured on the client's active template.
+        # Fall back to fingerprint detection, then hardcoded default.
+        active_template = (
+            db.query(ReportTemplate)
+            .filter(
+                ReportTemplate.client_id == job.client_id,
+                ReportTemplate.is_active.is_(True),
+            )
+            .first()
+        )
+
+        parser = None
+        if active_template and active_template.parser_key:
+            parser = get_parser(active_template.parser_key)
+            if parser:
+                job.detected_template_id = active_template.id
+                logger.info(
+                    f"[extraction_service] import={import_id} "
+                    f"using client template parser={parser.NAME}/{parser.VERSION}"
+                )
+
+        if parser is None:
+            parser = detect_parser(first_page_text)
+            if parser:
+                logger.info(
+                    f"[extraction_service] import={import_id} "
+                    f"fingerprint detected parser={parser.NAME}/{parser.VERSION}"
+                )
+
+        if parser is None:
+            parser = get_parser("agroberries_v1")
+
         if parser is None:
             raise ValueError("No suitable parser found for this document")
 

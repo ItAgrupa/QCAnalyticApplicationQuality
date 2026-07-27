@@ -26,8 +26,9 @@ function LoadingFallback() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated)
-  if (!isAuthenticated) return <Navigate to="/login" replace />
+  // Read localStorage directly — reliable on a fresh page reload before any
+  // React subscriber has had a chance to register with the auth store.
+  if (!localStorage.getItem('access_token')) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 

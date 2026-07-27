@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter
-from sqlalchemy import func
+from sqlalchemy import func, case
 
 from app.api.deps import CurrentUser, DB
 from app.models.import_job import ImportJob
@@ -10,6 +10,7 @@ from app.models.load_summary_measurement import LoadSummaryMeasurement
 from app.models.pallet import Pallet
 from app.models.pallet_measurement import PalletMeasurement
 from app.models.packaging_type import PackagingType
+from app.models.quality_standard import QualityStandard
 
 router = APIRouter()
 
@@ -59,9 +60,44 @@ def get_dashboard(current_user: CurrentUser, db: DB):
     analysed_pallets = passed_pallets + failed_pallets + hold_pallets
     pass_rate = round(passed_pallets / analysed_pallets * 100, 1) if analysed_pallets > 0 else None
 
+    # ── Live quality standards lookup ─────────────────────────────────────────
+    # Read directly from the quality_standards table so the dashboard is always
+    # in sync with whatever is configured in Settings.  Pre-stamped values on
+    # measurement rows are intentionally ignored here — they may be stale or
+    # contain placeholder zeros from loads analysed before standards were set up.
+    #
+    # When multiple standards exist for the same parameter_code (different clients
+    # or variety/packaging specifics), we prefer the most general rule:
+    #   1. No variety restriction  (variety_id IS NULL)
+    #   2. No packaging restriction (packaging_type_id IS NULL)
+    #   3. Most recently created (highest id)
+    std_rows = (
+        db.query(QualityStandard)
+        .filter(
+            QualityStandard.is_active == True,  # noqa: E712
+            (QualityStandard.effective_to.is_(None)) |
+            (QualityStandard.effective_to >= date.today()),
+        )
+        .order_by(
+            QualityStandard.parameter_code,
+            case((QualityStandard.variety_id.is_(None), 0), else_=1),
+            case((QualityStandard.packaging_type_id.is_(None), 0), else_=1),
+            QualityStandard.id.desc(),
+        )
+        .all()
+    )
+    # First matching row per parameter_code wins (most general + most recent)
+    live_standards: dict[str, dict] = {}
+    for s in std_rows:
+        if s.parameter_code not in live_standards:
+            live_standards[s.parameter_code] = {
+                "standard_min": float(s.min_value) if s.min_value is not None else None,
+                "standard_max": float(s.max_value) if s.max_value is not None else None,
+            }
+
     # ── Cross-load measurement averages ──────────────────────────────────────
     # Average each parameter across all loads using load_summary_measurements
-    # (already pre-computed by the decision engine per load)
+    # (already pre-computed by the decision engine per load).
     sm_rows = (
         db.query(
             LoadSummaryMeasurement.parameter_code,
@@ -70,8 +106,6 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             func.avg(LoadSummaryMeasurement.average_value).label("avg_value"),
             func.avg(LoadSummaryMeasurement.max_value).label("avg_max"),
             func.avg(LoadSummaryMeasurement.min_value).label("avg_min"),
-            func.max(LoadSummaryMeasurement.standard_min).label("standard_min"),
-            func.max(LoadSummaryMeasurement.standard_max).label("standard_max"),
         )
         .filter(LoadSummaryMeasurement.average_value.isnot(None))
         .group_by(
@@ -83,27 +117,17 @@ def get_dashboard(current_user: CurrentUser, db: DB):
         .all()
     )
 
-    # Grab worst-case and standards from individual pallet_measurements
-    # (decision engine stores standard_min/max there after analysis)
+    # Worst recorded value per parameter (from pallet-level measurements)
     pm_agg_rows = (
         db.query(
             PalletMeasurement.parameter_code,
             func.max(PalletMeasurement.value_numeric).label("max_value"),
-            func.max(PalletMeasurement.standard_min).label("standard_min"),
-            func.max(PalletMeasurement.standard_max).label("standard_max"),
         )
         .filter(PalletMeasurement.value_numeric.isnot(None))
         .group_by(PalletMeasurement.parameter_code)
         .all()
     )
-    pm_by_code = {
-        r.parameter_code: {
-            "max_value":    float(r.max_value)    if r.max_value    is not None else 0.0,
-            "standard_min": float(r.standard_min) if r.standard_min is not None else None,
-            "standard_max": float(r.standard_max) if r.standard_max is not None else None,
-        }
-        for r in pm_agg_rows
-    }
+    pm_max_by_code = {r.parameter_code: float(r.max_value) for r in pm_agg_rows}
 
     measurement_averages = [
         {
@@ -113,16 +137,11 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             "avg_value": round(float(r.avg_value), 2) if r.avg_value is not None else None,
             "avg_max":   round(float(r.avg_max),   2) if r.avg_max   is not None else None,
             "avg_min":   round(float(r.avg_min),   2) if r.avg_min   is not None else None,
-            # Prefer pallet-level standards (populated by decision engine) over summary-level
-            "max_value":    round(pm_by_code.get(r.parameter_code, {}).get("max_value", 0), 2),
-            "standard_min": (
-                float(r.standard_min) if r.standard_min is not None
-                else pm_by_code.get(r.parameter_code, {}).get("standard_min")
-            ),
-            "standard_max": (
-                float(r.standard_max) if r.standard_max is not None
-                else pm_by_code.get(r.parameter_code, {}).get("standard_max")
-            ),
+            "max_value": round(pm_max_by_code.get(r.parameter_code, 0.0), 2),
+            # Standards come exclusively from the live quality_standards table.
+            # None = parameter exists in measurements but has no standard configured yet.
+            "standard_min": live_standards.get(r.parameter_code, {}).get("standard_min"),
+            "standard_max": live_standards.get(r.parameter_code, {}).get("standard_max"),
         }
         for r in sm_rows
     ]

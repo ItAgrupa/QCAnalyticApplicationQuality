@@ -216,7 +216,7 @@ export function MainLayout() {
             </Box>
             <Divider />
             <MenuItem
-              onClick={() => { logout(); navigate('/login') }}
+              onClick={() => { logout(); window.location.href = '/login' }}
               sx={{ gap: 1.5, py: 1.2, color: 'error.main' }}
             >
               <LogoutIcon fontSize="small" />

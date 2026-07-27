@@ -6,9 +6,11 @@ from __future__ import annotations
 
 from .base import BaseParser, ParseResult
 from .agroberries_v1 import AgroberriesV1Parser
+from .bwqcin_v1 import BWQCINParser
 
 PARSER_REGISTRY: dict[str, BaseParser] = {
     AgroberriesV1Parser.NAME: AgroberriesV1Parser(),
+    BWQCINParser.NAME:        BWQCINParser(),
 }
 
 _ORDERED: list[BaseParser] = list(PARSER_REGISTRY.values())

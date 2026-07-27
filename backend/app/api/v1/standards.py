@@ -1,5 +1,5 @@
 ﻿from typing import Annotated, Any
-from fastapi import APIRouter, Depends, Query, UploadFile, File, HTTPException, status
+from fastapi import APIRouter, Body, Depends, Query, UploadFile, File, HTTPException, status
 from app.api.deps import CurrentUser, DB, require_role
 from app.core.permissions import RoleName
 from app.schemas.standard import QualityStandardCreate, QualityStandardUpdate, QualityStandardResponse
@@ -15,10 +15,37 @@ AdminOnly = Annotated[CurrentUser, Depends(require_role(RoleName.ADMIN))]
 def list_standards(current_user: CurrentUser, db: DB,
                    client_id: int | None = None, product_id: int | None = None,
                    variety_id: int | None = None, packaging_type_id: int | None = None,
+                   parameter_group: str | None = None,
                    active_only: bool = True,
                    page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=500)):
     return svc.list_standards(db, client_id, product_id, variety_id,
-                               packaging_type_id, page, page_size, active_only)
+                               packaging_type_id, parameter_group, page, page_size, active_only)
+
+
+# ── Parameter Groups ──────────────────────────────────────────────────────────
+
+@router.get("/groups/", response_model=list[dict])
+def list_groups(current_user: CurrentUser, db: DB, client_id: int | None = None):
+    """Return distinct parameter_group values with a count of standards in each."""
+    return svc.list_standard_groups(db, client_id)
+
+
+@router.patch("/groups/rename", status_code=status.HTTP_200_OK)
+def rename_group(current_user: AdminOnly, db: DB,
+                 old_name: str = Body(...), new_name: str = Body(...)):
+    """Rename a group across all standards that reference it."""
+    new_name = new_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="new_name cannot be blank")
+    count = svc.rename_standard_group(db, old_name, new_name, current_user.id)
+    return {"renamed": count, "old_name": old_name, "new_name": new_name}
+
+
+@router.delete("/groups/{group_name}", status_code=status.HTTP_200_OK)
+def unassign_group(group_name: str, current_user: AdminOnly, db: DB):
+    """Clear the group assignment from all standards in this group (does NOT delete the standards)."""
+    count = svc.unassign_standard_group(db, group_name, current_user.id)
+    return {"unassigned": count, "group": group_name}
 
 
 @router.post("/", response_model=QualityStandardResponse, status_code=status.HTTP_201_CREATED)

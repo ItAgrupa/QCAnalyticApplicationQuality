@@ -11,7 +11,7 @@ class ScoreRule(Base, TimestampMixin):
     __tablename__ = "score_rules"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    client_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False)
+    client_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("clients.id", ondelete="RESTRICT"), nullable=True)
     market_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("markets.id"), nullable=True)
     parameter_code: Mapped[str] = mapped_column(String(100), nullable=False)
     score_type: Mapped[str] = mapped_column(String(20), nullable=False)   # "Q" or "CS"

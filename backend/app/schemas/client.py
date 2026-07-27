@@ -37,6 +37,14 @@ class ClientMarketRef(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class ActiveTemplateRef(BaseModel):
+    id: int
+    template_name: str
+    parser_key: str
+
+    model_config = {"from_attributes": True}
+
+
 class ClientResponse(BaseModel):
     id: int
     client_code: str
@@ -47,5 +55,14 @@ class ClientResponse(BaseModel):
     is_active: bool
     notes: str | None
     created_at: datetime
+    active_template: ActiveTemplateRef | None = None
 
     model_config = {"from_attributes": True}
+
+    @classmethod
+    def from_orm_with_template(cls, client) -> "ClientResponse":
+        active = next((t for t in client.templates if t.is_active), None)
+        obj = cls.model_validate(client)
+        if active:
+            obj.active_template = ActiveTemplateRef.model_validate(active)
+        return obj

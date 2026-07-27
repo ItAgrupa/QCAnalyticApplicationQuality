@@ -3,17 +3,19 @@ import {
   Box, Typography, Button, Chip, IconButton, Tooltip, TextField, MenuItem,
   Dialog, DialogTitle, DialogContent, DialogActions, Alert, CircularProgress,
   Grid, Divider, LinearProgress, Checkbox, Table, TableHead, TableRow,
-  TableCell, TableBody, TableContainer, Paper,
+  TableCell, TableBody, TableContainer, Paper, Autocomplete,
 } from '@mui/material'
 import {
   Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon,
   Warning as WarnIcon, PictureAsPdf as PdfIcon, AutoFixHigh as MagicIcon,
+  Label as LabelIcon,
 } from '@mui/icons-material'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import {
   listStandards, createStandard, updateStandard, deleteStandard,
+  listStandardGroups, renameStandardGroup, unassignStandardGroup,
   listClients, listProducts, listVarieties, listPackaging,
   parseStandardsPdf,
   type QualityStandard, type ParsedStandardDraft,
@@ -51,7 +53,6 @@ function PdfReviewDialog({
   const [productId, setProductId] = useState('')
   const [effectiveFrom, setEffectiveFrom] = useState('2026-01-01')
 
-  // keep rows in sync when drafts prop changes (new parse result)
   useState(() => {
     setRows(drafts.map((d, i) => ({ ...d, _selected: true, _id: String(i) })))
   })
@@ -75,7 +76,7 @@ function PdfReviewDialog({
   }
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth PaperProps={{ sx: { borderRadius: 3, height: '90vh' } }}>
+    <Dialog open={open} onClose={onClose} maxWidth="xl" fullWidth slotProps={{ paper: { sx: { borderRadius: 3, height: '90vh' } } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, fontWeight: 700 }}>
         <MagicIcon color="primary" />
         PDF Parse Results — Review & Import
@@ -91,7 +92,6 @@ function PdfReviewDialog({
               <strong>{rows.length} parameters extracted.</strong> Select which ones to import, then assign a client and product below. You can edit values inline before saving.
             </Alert>
 
-            {/* Global fields required before saving */}
             <Grid container spacing={2}>
               <Grid item xs={12} sm={4}>
                 <TextField select fullWidth size="small" label="Client *" value={clientId} onChange={e => setClientId(e.target.value)}>
@@ -225,6 +225,9 @@ export default function StandardsTab() {
 
   const [dialog, setDialog] = useState<QualityStandard | null | 'new'>(null)
   const [filterClient, setFilterClient] = useState<string>('')
+  const [filterGroup, setFilterGroup] = useState<string>('')
+  const [renameDialog, setRenameDialog] = useState<{ old: string; new: string } | null>(null)
+  const [newGroupName, setNewGroupName] = useState<string | false>(false)
   const [apiError, setApiError] = useState<string | null>(null)
   const [pdfParsing, setPdfParsing] = useState(false)
   const [pdfError, setPdfError] = useState<string | null>(null)
@@ -236,16 +239,29 @@ export default function StandardsTab() {
   const { data: products } = useQuery({ queryKey: ['products'], queryFn: () => listProducts({ page_size: 200 }) })
   const { data: varieties } = useQuery({ queryKey: ['varieties'], queryFn: () => listVarieties({ page_size: 500 }) })
   const { data: packaging } = useQuery({ queryKey: ['packaging'], queryFn: () => listPackaging({ page_size: 200 }) })
+  const { data: groups, isFetching: groupsFetching } = useQuery({
+    queryKey: ['standard-groups', filterClient],
+    queryFn: () => listStandardGroups(filterClient ? Number(filterClient) : undefined),
+  })
   const { data, isFetching } = useQuery({
-    queryKey: ['standards', filterClient],
-    queryFn: () => listStandards({ client_id: filterClient || undefined, page_size: 500, active_only: false }),
+    queryKey: ['standards', filterClient, filterGroup],
+    queryFn: () => listStandards({
+      client_id: filterClient || undefined,
+      parameter_group: filterGroup || undefined,
+      page_size: 500,
+      active_only: false,
+    }),
   })
 
   const form = useForm<StdForm>({ defaultValues: { severity: 'MAJOR', effective_from: '2026-01-01' } })
 
   const createMut = useMutation({
     mutationFn: createStandard,
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['standards'] }); setDialog(null) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['standards'] })
+      qc.invalidateQueries({ queryKey: ['standard-groups'] })
+      setDialog(null)
+    },
     onError: (e: unknown) => {
       const err = e as { response?: { data?: { detail?: string } } }
       setApiError(err.response?.data?.detail ?? 'Validation failed')
@@ -253,16 +269,46 @@ export default function StandardsTab() {
   })
   const updateMut = useMutation({
     mutationFn: ({ id, d }: { id: number; d: object }) => updateStandard(id, d),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['standards'] }); setDialog(null) },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['standards'] })
+      qc.invalidateQueries({ queryKey: ['standard-groups'] })
+      setDialog(null)
+    },
   })
   const deleteMut = useMutation({
     mutationFn: deleteStandard,
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['standards'] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['standards'] })
+      qc.invalidateQueries({ queryKey: ['standard-groups'] })
+    },
   })
+  const renameMut = useMutation({
+    mutationFn: ({ old: o, new: n }: { old: string; new: string }) => renameStandardGroup(o, n),
+    onSuccess: (_, vars) => {
+      if (filterGroup === vars.old) setFilterGroup(vars.new)
+      qc.invalidateQueries({ queryKey: ['standards'] })
+      qc.invalidateQueries({ queryKey: ['standard-groups'] })
+      setRenameDialog(null)
+    },
+  })
+  const unassignMut = useMutation({
+    mutationFn: (name: string) => unassignStandardGroup(name),
+    onSuccess: (_, name) => {
+      if (filterGroup === name) setFilterGroup('')
+      qc.invalidateQueries({ queryKey: ['standards'] })
+      qc.invalidateQueries({ queryKey: ['standard-groups'] })
+    },
+  })
+
+  const openRename = (name: string) => setRenameDialog({ old: name, new: name })
+  const submitRename = () => {
+    if (!renameDialog || !renameDialog.new.trim()) return
+    renameMut.mutate({ old: renameDialog.old, new: renameDialog.new.trim() })
+  }
 
   const openDialog = (s: QualityStandard | 'new') => {
     form.reset(s === 'new'
-      ? { client_id: filterClient, product_id: '', variety_id: '', packaging_type_id: '', market_id: '', category: 'condition', parameter_code: '', parameter_name: '', parameter_group: 'condition_defects', min_value: '', max_value: '', unit: '%', severity: 'MAJOR', score_system: 'CS', effective_from: '2026-01-01' }
+      ? { client_id: filterClient, product_id: '', variety_id: '', packaging_type_id: '', market_id: '', category: 'condition', parameter_code: '', parameter_name: '', parameter_group: filterGroup || 'condition_defects', min_value: '', max_value: '', unit: '%', severity: 'MAJOR', score_system: 'CS', effective_from: '2026-01-01' }
       : { client_id: String(s.client_id), product_id: String(s.product_id), variety_id: String(s.variety_id ?? ''), packaging_type_id: String(s.packaging_type_id ?? ''), market_id: String(s.market_id ?? ''), category: s.category ?? '', parameter_code: s.parameter_code, parameter_name: s.parameter_name, parameter_group: s.parameter_group ?? '', min_value: s.min_value ?? '', max_value: s.max_value ?? '', unit: s.unit ?? '', severity: s.severity, score_system: s.score_system ?? '', effective_from: s.effective_from })
     setApiError(null)
     setDialog(s)
@@ -328,6 +374,7 @@ export default function StandardsTab() {
       setImportProgress({ done, total: rows.length })
     }
     qc.invalidateQueries({ queryKey: ['standards'] })
+    qc.invalidateQueries({ queryKey: ['standard-groups'] })
     setImportProgress(null)
   }
 
@@ -361,6 +408,8 @@ export default function StandardsTab() {
     )},
   ]
 
+  const groupNames = groups?.map(g => g.name) ?? []
+
   return (
     <Box>
       {/* Header row */}
@@ -370,13 +419,12 @@ export default function StandardsTab() {
             Quality Standards <Chip label={data?.total ?? 0} size="small" sx={{ ml: 1 }} />
           </Typography>
           <TextField select size="small" label="Filter by client" value={filterClient}
-            onChange={e => setFilterClient(e.target.value)} sx={{ minWidth: 200 }}>
+            onChange={e => { setFilterClient(e.target.value); setFilterGroup('') }} sx={{ minWidth: 200 }}>
             <MenuItem value="">All clients</MenuItem>
             {clients?.items.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}
           </TextField>
         </Box>
         <Box display="flex" gap={1}>
-          {/* PDF import button */}
           <input ref={fileRef} type="file" accept=".pdf" hidden onChange={handleFileChange} />
           <Button
             variant="outlined" size="small"
@@ -405,6 +453,81 @@ export default function StandardsTab() {
         </Box>
       )}
 
+      {/* ── Parameter Groups Panel ─────────────────────────────────────────── */}
+      <Box sx={{ mb: 2, p: 1.5, border: '1px solid', borderColor: 'divider', borderRadius: 2, bgcolor: 'background.paper' }}>
+        <Box display="flex" alignItems="center" gap={1} mb={1.5}>
+          <LabelIcon fontSize="small" color="primary" />
+          <Typography variant="body2" fontWeight={700}>Parameter Groups</Typography>
+          {groupsFetching && <CircularProgress size={12} />}
+          <Tooltip title="Add new group">
+            <IconButton size="small" color="primary" onClick={() => setNewGroupName('')}
+              sx={{ border: '1px solid', borderColor: 'primary.main', p: 0.25 }}>
+              <AddIcon sx={{ fontSize: 14 }} />
+            </IconButton>
+          </Tooltip>
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 0.5 }}>
+            Click to filter · Pencil to rename · X to remove group from all standards
+          </Typography>
+        </Box>
+        <Box display="flex" flexWrap="wrap" gap={1} alignItems="center">
+          {/* "All" chip clears the group filter */}
+          <Chip
+            label="All groups"
+            size="small"
+            color={!filterGroup ? 'primary' : 'default'}
+            variant={!filterGroup ? 'filled' : 'outlined'}
+            onClick={() => setFilterGroup('')}
+            sx={{ cursor: 'pointer' }}
+          />
+
+          {groups?.map(g => (
+            <Box key={g.name} display="flex" alignItems="center" sx={{
+              border: '1px solid', borderColor: filterGroup === g.name ? 'primary.main' : 'divider',
+              borderRadius: 4, pl: 1, pr: 0.5, py: 0.25,
+              bgcolor: filterGroup === g.name ? 'primary.50' : 'transparent',
+            }}>
+              <Typography
+                variant="caption" fontWeight={filterGroup === g.name ? 700 : 400}
+                sx={{ cursor: 'pointer', color: filterGroup === g.name ? 'primary.main' : 'text.primary', mr: 0.5 }}
+                onClick={() => setFilterGroup(filterGroup === g.name ? '' : g.name)}
+              >
+                {g.name}
+              </Typography>
+              <Chip
+                label={g.count}
+                size="small"
+                color={filterGroup === g.name ? 'primary' : 'default'}
+                sx={{ height: 16, fontSize: 10, mr: 0.5, cursor: 'pointer' }}
+                onClick={() => setFilterGroup(filterGroup === g.name ? '' : g.name)}
+              />
+              <Tooltip title={`Rename "${g.name}"`}>
+                <IconButton size="small" sx={{ p: 0.25 }} onClick={() => openRename(g.name)}>
+                  <EditIcon sx={{ fontSize: 13 }} />
+                </IconButton>
+              </Tooltip>
+              <Tooltip title={`Remove group from all standards (standards are kept)`}>
+                <IconButton
+                  size="small" sx={{ p: 0.25 }} color="error"
+                  disabled={unassignMut.isPending}
+                  onClick={() => {
+                    if (window.confirm(`Remove group "${g.name}" from all ${g.count} standard(s)? The standards will not be deleted.`))
+                      unassignMut.mutate(g.name)
+                  }}
+                >
+                  <DeleteIcon sx={{ fontSize: 13 }} />
+                </IconButton>
+              </Tooltip>
+            </Box>
+          ))}
+
+          {groups?.length === 0 && (
+            <Typography variant="caption" color="text.secondary" sx={{ pl: 1 }}>
+              No groups yet. Add a standard with a group name to create one.
+            </Typography>
+          )}
+        </Box>
+      </Box>
+
       {/* Info banner */}
       <Box sx={{ bgcolor: '#FFFDE7', border: '1px solid #FFF9C4', borderRadius: 1, p: 1.5, mb: 2, display: 'flex', gap: 1, alignItems: 'center' }}>
         <WarnIcon fontSize="small" sx={{ color: '#F57F17' }} />
@@ -414,12 +537,12 @@ export default function StandardsTab() {
         </Typography>
       </Box>
 
-      <DataGrid rows={data?.items ?? []} columns={columns} loading={isFetching} autoHeight disableRowSelectionOnClick
+      <DataGrid rows={data?.items ?? []} columns={columns} loading={isFetching} disableRowSelectionOnClick
         pageSizeOptions={[25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-        sx={{ border: 'none', '& .MuiDataGrid-columnHeaders': { bgcolor: '#FAF5FC' } }} />
+        sx={{ border: 'none', height: 'auto', '& .MuiDataGrid-columnHeaders': { bgcolor: '#FAF5FC' } }} />
 
-      {/* Manual add/edit dialog */}
-      <Dialog open={!!dialog} onClose={() => setDialog(null)} maxWidth="md" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
+      {/* ── Manual add/edit dialog ─────────────────────────────────────────── */}
+      <Dialog open={!!dialog} onClose={() => setDialog(null)} maxWidth="md" fullWidth slotProps={{ paper: { sx: { borderRadius: 3 } } }}>
         <DialogTitle fontWeight={700}>{dialog === 'new' ? 'Add Quality Standard' : 'Edit Standard'}</DialogTitle>
         <DialogContent>
           {apiError && <Alert severity="error" sx={{ mb: 1 }}>{apiError}</Alert>}
@@ -473,8 +596,29 @@ export default function StandardsTab() {
             <Grid item xs={12} sm={8}>
               <TextField fullWidth label="Parameter Name *" placeholder="e.g. Mold (premium bulk)" {...form.register('parameter_name', { required: true })} />
             </Grid>
+            {/* Parameter Group — Autocomplete with freeSolo so users can pick existing or type new */}
             <Grid item xs={12} sm={4}>
-              <TextField fullWidth label="Parameter Group" placeholder="e.g. condition_defects" {...form.register('parameter_group')} />
+              <Controller
+                name="parameter_group"
+                control={form.control}
+                render={({ field: { onChange, value } }) => (
+                  <Autocomplete
+                    freeSolo
+                    options={groupNames}
+                    value={value ?? ''}
+                    onInputChange={(_, v) => onChange(v)}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        fullWidth
+                        label="Parameter Group"
+                        placeholder="e.g. condition_defects"
+                        helperText="Pick existing or type a new group name"
+                      />
+                    )}
+                  />
+                )}
+              />
             </Grid>
             <Grid item xs={6} sm={4}>
               <TextField fullWidth label="Min Value" type="number" inputProps={{ step: '0.01' }} {...form.register('min_value')} />
@@ -491,6 +635,77 @@ export default function StandardsTab() {
           <Button onClick={() => setDialog(null)}>Cancel</Button>
           <Button variant="contained" disabled={createMut.isPending || updateMut.isPending} onClick={submit}>
             {createMut.isPending || updateMut.isPending ? <CircularProgress size={18} color="inherit" /> : 'Save Standard'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── New Group dialog ──────────────────────────────────────────────── */}
+      <Dialog open={newGroupName !== false} onClose={() => setNewGroupName(false)} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: 3 } } }}>
+        <DialogTitle fontWeight={700}>New Parameter Group</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1 }}>
+            <TextField
+              fullWidth size="small" label="Group name *"
+              placeholder="e.g. appearance_defects"
+              value={typeof newGroupName === 'string' ? newGroupName : ''}
+              onChange={e => setNewGroupName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter' && typeof newGroupName === 'string' && newGroupName.trim()) {
+                  const name = newGroupName.trim()
+                  setNewGroupName(false)
+                  setFilterGroup(name)
+                  openDialog('new')
+                }
+              }}
+              autoFocus
+              helperText="A standard will be opened pre-filled with this group so you can save the first entry"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setNewGroupName(false)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={typeof newGroupName !== 'string' || !newGroupName.trim()}
+            onClick={() => {
+              const name = (newGroupName as string).trim()
+              setNewGroupName(false)
+              setFilterGroup(name)
+              openDialog('new')
+            }}
+          >
+            Add Standard to Group
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* ── Rename Group dialog ────────────────────────────────────────────── */}
+      <Dialog open={!!renameDialog} onClose={() => setRenameDialog(null)} maxWidth="xs" fullWidth slotProps={{ paper: { sx: { borderRadius: 3 } } }}>
+        <DialogTitle fontWeight={700}>Rename Group</DialogTitle>
+        <DialogContent>
+          <Box sx={{ pt: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              fullWidth size="small" label="Current name"
+              value={renameDialog?.old ?? ''} disabled
+            />
+            <TextField
+              fullWidth size="small" label="New name *"
+              value={renameDialog?.new ?? ''}
+              onChange={e => setRenameDialog(r => r ? { ...r, new: e.target.value } : null)}
+              onKeyDown={e => { if (e.key === 'Enter') submitRename() }}
+              autoFocus
+              helperText="All standards in this group will be updated"
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ p: 2 }}>
+          <Button onClick={() => setRenameDialog(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            disabled={renameMut.isPending || !renameDialog?.new.trim() || renameDialog?.new.trim() === renameDialog?.old}
+            onClick={submitRename}
+          >
+            {renameMut.isPending ? <CircularProgress size={18} color="inherit" /> : 'Rename'}
           </Button>
         </DialogActions>
       </Dialog>
