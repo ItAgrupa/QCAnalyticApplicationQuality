@@ -1,5 +1,6 @@
 # Environment
 .env
+.env.production
 .env.local
 .env.*.local
 
@@ -37,6 +38,7 @@ storage/
 # IDE
 .vscode/
 .idea/
+.claude/settings.local.json
 *.swp
 *.swo
 

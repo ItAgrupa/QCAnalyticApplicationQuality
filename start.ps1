@@ -73,30 +73,29 @@ if ($backendRunning) {
 } else {
     Write-Host "[4/5] Starting FastAPI backend..." -ForegroundColor Cyan
 
-    $backendEnv = @{
-        POSTGRES_HOST         = "localhost"
-        POSTGRES_PORT         = "5432"
-        POSTGRES_DB           = "quality_platform"
-        POSTGRES_USER         = "qp_user"
-        POSTGRES_PASSWORD     = "qp_dev_password_2026"
-        SECRET_KEY            = "dev_secret_key_replace_in_production_must_be_64_chars_minimum_abc123"
-        UPLOAD_DIR            = "$ROOT\storage\uploads"
-        EXPORT_DIR            = "$ROOT\storage\exports"
-        CORS_ORIGINS          = "http://localhost:5173,http://${LAN_IP}:5173"
-        REDIS_URL             = "redis://localhost:6379/0"
-        CELERY_BROKER_URL     = "redis://localhost:6379/1"
-        CELERY_RESULT_BACKEND = "redis://localhost:6379/2"
-        SMTP_HOST             = "smtp.gmail.com"
-        SMTP_PORT             = "587"
-        SMTP_USER             = "itagrupamagopco@gmail.com"
-        SMTP_PASSWORD         = ""
-        FROM_EMAIL            = "itagrupamagopco@gmail.com"
-        APP_URL               = "http://${LAN_IP}:5173"
-        LOG_LEVEL             = "INFO"
-        ENVIRONMENT           = "development"
-        APP_NAME              = "Quality Intelligence Platform"
-        APP_VERSION           = "1.0.0"
+    $backendEnv = @{}
+    $envFile = Join-Path $ROOT ".env"
+    if (-not (Test-Path $envFile)) {
+        throw "Missing .env. Copy .env.example to .env and configure development values first."
     }
+    Get-Content $envFile | ForEach-Object {
+        $line = $_.Trim()
+        if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+            $parts = $line.Split("=", 2)
+            $backendEnv[$parts[0].Trim()] = $parts[1].Trim()
+        }
+    }
+
+    # Local-development overrides. Secrets and credentials remain in ignored .env.
+    $backendEnv["POSTGRES_HOST"] = "localhost"
+    $backendEnv["UPLOAD_DIR"] = "$ROOT\storage\uploads"
+    $backendEnv["EXPORT_DIR"] = "$ROOT\storage\exports"
+    $backendEnv["CORS_ORIGINS"] = "http://localhost:5173,http://${LAN_IP}:5173"
+    $backendEnv["REDIS_URL"] = "redis://localhost:6379/0"
+    $backendEnv["CELERY_BROKER_URL"] = "redis://localhost:6379/1"
+    $backendEnv["CELERY_RESULT_BACKEND"] = "redis://localhost:6379/2"
+    $backendEnv["APP_URL"] = "http://${LAN_IP}:5173"
+    $backendEnv["ENVIRONMENT"] = "development"
 
     $envBlock = ($backendEnv.GetEnumerator() | ForEach-Object { "`$env:$($_.Key)='$($_.Value)'; " }) -join ""
 
@@ -151,7 +150,7 @@ Write-Host ""
 Write-Host "  From any laptop on the same Wi-Fi / network:" -ForegroundColor White
 Write-Host "    http://${LAN_IP}:5173" -ForegroundColor Cyan
 Write-Host ""
-Write-Host "  Login:  admin@quality.com  /  Admin1234!" -ForegroundColor Yellow
+Write-Host "  Sign in with your configured development account." -ForegroundColor Yellow
 Write-Host ""
 Write-Host "  To stop the app: run stop.ps1 (or close the" -ForegroundColor DarkGray
 Write-Host "  two minimised PowerShell windows in the taskbar)" -ForegroundColor DarkGray

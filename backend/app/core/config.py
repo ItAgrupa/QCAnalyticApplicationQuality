@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import field_validator
+from pydantic import model_validator
 import os
 
 # Resolve .env from the project root regardless of where uvicorn is launched from.
@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     ENVIRONMENT: str = "development"
     DEBUG: bool = False
+    API_DOCS_ENABLED: bool = True
 
     # Database
     POSTGRES_HOST: str = "localhost"
@@ -67,6 +68,12 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
+    TRUSTED_HOSTS: str = "localhost,127.0.0.1"
+
+    @property
+    def trusted_hosts_list(self) -> list[str]:
+        return [host.strip() for host in self.TRUSTED_HOSTS.split(",") if host.strip()]
+
     # Logging
     LOG_LEVEL: str = "INFO"
 
@@ -77,6 +84,20 @@ class Settings(BaseSettings):
     @property
     def azure_di_enabled(self) -> bool:
         return bool(self.AZURE_DI_ENDPOINT and self.AZURE_DI_API_KEY)
+
+    @model_validator(mode="after")
+    def validate_production_security(self):
+        if self.ENVIRONMENT.lower() != "production":
+            return self
+
+        insecure_passwords = {"change_me", "change_me_strong_password", "qp_dev_password_2026"}
+        if self.POSTGRES_PASSWORD in insecure_passwords or len(self.POSTGRES_PASSWORD) < 16:
+            raise ValueError("POSTGRES_PASSWORD must be a strong value of at least 16 characters in production")
+        if self.SECRET_KEY.startswith("change_me") or len(self.SECRET_KEY) < 64:
+            raise ValueError("SECRET_KEY must be a random value of at least 64 characters in production")
+        if self.DEBUG:
+            raise ValueError("DEBUG must be false in production")
+        return self
 
 
 @lru_cache

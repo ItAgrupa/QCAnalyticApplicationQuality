@@ -7,6 +7,8 @@ Import customer PDF quality reports → human validation → standards compariso
 
 ## Quick Start
 
+These instructions start the **development environment**. For a company-server installation, backups, updates, and production operations, see [PRODUCTION.md](PRODUCTION.md).
+
 ### Prerequisites
 - [Docker Desktop](https://www.docker.com/products/docker-desktop/) (Windows/Mac/Linux)
 - Git
@@ -32,7 +34,7 @@ docker compose up --build
 | Celery Flower | http://localhost:5555 |
 | PostgreSQL | localhost:5432 |
 
-### 3. Create the first admin user
+### 3. Create the first development admin user
 After `docker compose up`, run:
 ```bash
 docker compose exec backend python -c "
@@ -42,10 +44,10 @@ from app.models.role import Role
 from app.core.security import hash_password
 db = SessionLocal()
 role = db.query(Role).filter(Role.name == 'Admin').first()
-user = User(full_name='Admin', email='admin@example.com', password_hash=hash_password('Admin1234!'), role_id=role.id)
+user = User(full_name='Admin', email='admin@example.com', password_hash=hash_password('replace-with-a-unique-password'), role_id=role.id)
 db.add(user)
 db.commit()
-print('Admin user created: admin@example.com / Admin1234!')
+print('Development administrator created')
 "
 ```
 
