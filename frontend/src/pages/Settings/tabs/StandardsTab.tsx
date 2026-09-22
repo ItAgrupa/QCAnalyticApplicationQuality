@@ -30,6 +30,7 @@ type StdForm = {
   market_id: string; category: string; parameter_code: string; parameter_name: string
   parameter_group: string; min_value: string; max_value: string; unit: string
   severity: string; score_system: string; effective_from: string
+  company_id: string
 }
 
 // ── PDF Review Dialog ─────────────────────────────────────────────────────────
@@ -224,6 +225,7 @@ export default function StandardsTab() {
   const fileRef = useRef<HTMLInputElement>(null)
 
   const [dialog, setDialog] = useState<QualityStandard | null | 'new'>(null)
+  const [filterCompany, setFilterCompany] = useState<string>('')
   const [filterClient, setFilterClient] = useState<string>('')
   const [filterGroup, setFilterGroup] = useState<string>('')
   const [renameDialog, setRenameDialog] = useState<{ old: string; new: string } | null>(null)
@@ -244,10 +246,11 @@ export default function StandardsTab() {
     queryFn: () => listStandardGroups(filterClient ? Number(filterClient) : undefined),
   })
   const { data, isFetching } = useQuery({
-    queryKey: ['standards', filterClient, filterGroup],
+    queryKey: ['standards', filterClient, filterGroup, filterCompany],
     queryFn: () => listStandards({
       client_id: filterClient || undefined,
       parameter_group: filterGroup || undefined,
+      company_id: filterCompany ? Number(filterCompany) : undefined,
       page_size: 500,
       active_only: false,
     }),
@@ -308,8 +311,8 @@ export default function StandardsTab() {
 
   const openDialog = (s: QualityStandard | 'new') => {
     form.reset(s === 'new'
-      ? { client_id: filterClient, product_id: '', variety_id: '', packaging_type_id: '', market_id: '', category: 'condition', parameter_code: '', parameter_name: '', parameter_group: filterGroup || 'condition_defects', min_value: '', max_value: '', unit: '%', severity: 'MAJOR', score_system: 'CS', effective_from: '2026-01-01' }
-      : { client_id: String(s.client_id), product_id: String(s.product_id), variety_id: String(s.variety_id ?? ''), packaging_type_id: String(s.packaging_type_id ?? ''), market_id: String(s.market_id ?? ''), category: s.category ?? '', parameter_code: s.parameter_code, parameter_name: s.parameter_name, parameter_group: s.parameter_group ?? '', min_value: s.min_value ?? '', max_value: s.max_value ?? '', unit: s.unit ?? '', severity: s.severity, score_system: s.score_system ?? '', effective_from: s.effective_from })
+      ? { client_id: filterClient, product_id: '', variety_id: '', packaging_type_id: '', market_id: '', category: 'condition', parameter_code: '', parameter_name: '', parameter_group: filterGroup || 'condition_defects', min_value: '', max_value: '', unit: '%', severity: 'MAJOR', score_system: 'CS', effective_from: '2026-01-01', company_id: filterCompany || '' }
+      : { client_id: String(s.client_id), product_id: String(s.product_id), variety_id: String(s.variety_id ?? ''), packaging_type_id: String(s.packaging_type_id ?? ''), market_id: String(s.market_id ?? ''), category: s.category ?? '', parameter_code: s.parameter_code, parameter_name: s.parameter_name, parameter_group: s.parameter_group ?? '', min_value: s.min_value ?? '', max_value: s.max_value ?? '', unit: s.unit ?? '', severity: s.severity, score_system: s.score_system ?? '', effective_from: s.effective_from, company_id: s.company_id != null ? String(s.company_id) : '' })
     setApiError(null)
     setDialog(s)
   }
@@ -321,6 +324,7 @@ export default function StandardsTab() {
       client_id: Number(d.client_id), product_id: Number(d.product_id),
       variety_id: toNum(d.variety_id), packaging_type_id: toNum(d.packaging_type_id),
       market_id: toNum(d.market_id), min_value: d.min_value || null, max_value: d.max_value || null,
+      company_id: d.company_id ? Number(d.company_id) : null,
     }
     if (dialog === 'new') createMut.mutate(payload)
     else if (dialog) updateMut.mutate({ id: dialog.id, d: payload })
@@ -380,6 +384,17 @@ export default function StandardsTab() {
 
   const columns: GridColDef[] = [
     { field: 'parameter_name', headerName: 'Parameter', flex: 1.2 },
+    {
+      field: 'company_id',
+      headerName: 'Company',
+      width: 130,
+      renderCell: ({ row }) => {
+        const cid = (row as QualityStandard).company_id
+        if (cid === 1) return <Chip size="small" label="Magopco" sx={{ bgcolor: 'rgba(123, 31, 162, 0.1)', color: '#7B1FA2', fontWeight: 600 }} />
+        if (cid === 2) return <Chip size="small" label="Agrupa Marca" sx={{ bgcolor: 'rgba(46, 125, 50, 0.1)', color: '#2E7D32', fontWeight: 600 }} />
+        return <Chip size="small" label="Shared" sx={{ bgcolor: '#F1F5F9', color: '#64748B', fontWeight: 600 }} />
+      },
+    },
     { field: 'parameter_group', headerName: 'Group', width: 150 },
     { field: 'min_value', headerName: 'Min', width: 80, renderCell: ({ row }) => (row as QualityStandard).min_value ?? '—' },
     { field: 'max_value', headerName: 'Max', width: 80, renderCell: ({ row }) => (row as QualityStandard).max_value ?? '—' },
@@ -414,10 +429,22 @@ export default function StandardsTab() {
     <Box>
       {/* Header row */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
           <Typography variant="subtitle1" fontWeight={700}>
             Quality Standards <Chip label={data?.total ?? 0} size="small" sx={{ ml: 1 }} />
           </Typography>
+          <TextField
+            select
+            size="small"
+            label="Filter company"
+            value={filterCompany}
+            onChange={e => setFilterCompany(e.target.value)}
+            sx={{ minWidth: 160 }}
+          >
+            <MenuItem value="">All companies</MenuItem>
+            <MenuItem value="1">Magopco</MenuItem>
+            <MenuItem value="2">Agrupa Marca</MenuItem>
+          </TextField>
           <TextField select size="small" label="Filter by client" value={filterClient}
             onChange={e => { setFilterClient(e.target.value); setFilterGroup('') }} sx={{ minWidth: 200 }}>
             <MenuItem value="">All clients</MenuItem>
@@ -547,6 +574,19 @@ export default function StandardsTab() {
         <DialogContent>
           {apiError && <Alert severity="error" sx={{ mb: 1 }}>{apiError}</Alert>}
           <Grid container spacing={2} sx={{ pt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <Controller
+                name="company_id"
+                control={form.control}
+                render={({ field }) => (
+                  <TextField {...field} select label="Company Assignment" fullWidth helperText="Assign to a company or keep shared across both">
+                    <MenuItem value="">Global (Shared across all companies)</MenuItem>
+                    <MenuItem value="1">Magopco</MenuItem>
+                    <MenuItem value="2">Agrupa Marca</MenuItem>
+                  </TextField>
+                )}
+              />
+            </Grid>
             <Grid item xs={12} sm={6}>
               <TextField select fullWidth label="Client *" {...form.register('client_id', { required: true })} defaultValue={filterClient}>
                 {clients?.items.map(c => <MenuItem key={c.id} value={String(c.id)}>{c.name}</MenuItem>)}

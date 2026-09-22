@@ -1,4 +1,4 @@
-﻿from typing import Annotated
+from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from app.api.deps import CurrentUser, DB, require_role
 from app.core.permissions import RoleName
@@ -12,9 +12,10 @@ AdminOnly = Annotated[CurrentUser, Depends(require_role(RoleName.ADMIN))]
 
 @router.get("/", response_model=PaginatedResponse[ClientResponse])
 def list_clients(current_user: CurrentUser, db: DB,
+                 company_id: int | None = None,
                  page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
                  search: str | None = None, include_inactive: bool = False):
-    return svc.list_clients(db, page, page_size, search, include_inactive)
+    return svc.list_clients(db, page, page_size, search, include_inactive, company_id=company_id)
 
 
 @router.get("/{client_id}", response_model=ClientResponse)

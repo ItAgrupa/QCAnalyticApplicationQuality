@@ -95,8 +95,10 @@ async def detect_parser(current_user: CurrentUser, file: UploadFile = File(...))
 
 
 @router.get("/", response_model=list[TemplateResponse])
-def list_templates(current_user: CurrentUser, db: DB, client_id: int | None = None):
+def list_templates(current_user: CurrentUser, db: DB, client_id: int | None = None, company_id: int | None = None):
     q = db.query(ReportTemplate)
+    if company_id is not None:
+        q = q.filter((ReportTemplate.company_id == company_id) | (ReportTemplate.company_id.is_(None)))
     if client_id:
         q = q.filter(ReportTemplate.client_id == client_id)
     return q.order_by(ReportTemplate.client_id, ReportTemplate.id).all()
@@ -124,6 +126,7 @@ def create_template(data: TemplateCreate, current_user: AdminOnly, db: DB):
 
     template = ReportTemplate(
         client_id=data.client_id,
+        company_id=data.company_id or client.company_id,
         template_name=data.template_name,
         template_version=data.template_version,
         file_type=data.file_type,

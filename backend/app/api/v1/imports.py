@@ -4,13 +4,14 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from sqlalchemy.orm import Session
 
-from app.api.deps import CurrentUser, DB, require_role
+from app.api.deps import CurrentUser, DB, require_role, ActiveCompanyId
 from app.core.permissions import RoleName
 from app.schemas.common import PaginatedResponse
 from app.schemas.import_job import ImportJobResponse, ImportJobDetailResponse
 from app.schemas.validation import ValidationSubmit, ValidationResponse, MeasurementInput, PalletInput
 from app.services import import_service as svc
 from app.services.validation_service import submit_validation
+from fastapi import Header
 
 router = APIRouter()
 AdminOrQM = Annotated[CurrentUser, Depends(require_role(RoleName.ADMIN, RoleName.QUALITY_MANAGER))]
@@ -22,9 +23,12 @@ async def upload_pdf(
     db: DB,
     file: UploadFile = File(...),
     client_id: int = Form(...),
+    company_id: int | None = Form(None),
+    x_company_id: Annotated[int | None, Header(alias="X-Company-Id")] = None,
 ):
     """Upload a quality report PDF and run extraction synchronously before returning."""
-    job = await svc.upload_import(db, file, client_id, current_user.id)
+    eff_company_id = company_id or x_company_id
+    job = await svc.upload_import(db, file, client_id, current_user.id, company_id=eff_company_id)
 
     from app.services.extraction_service import run_extraction_sync
     try:
@@ -40,11 +44,12 @@ def list_imports(
     current_user: CurrentUser,
     db: DB,
     client_id: int | None = None,
+    company_id: ActiveCompanyId = None,
     status: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ):
-    return svc.list_imports(db, page, page_size, client_id, status)
+    return svc.list_imports(db, page, page_size, client_id, status, company_id=company_id)
 
 
 @router.get("/{import_id}", response_model=ImportJobDetailResponse)

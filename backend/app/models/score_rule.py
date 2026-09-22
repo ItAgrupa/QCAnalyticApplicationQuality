@@ -12,6 +12,7 @@ class ScoreRule(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     client_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("clients.id", ondelete="RESTRICT"), nullable=True)
+    company_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("companies.id"), nullable=True, index=True)
     market_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("markets.id"), nullable=True)
     parameter_code: Mapped[str] = mapped_column(String(100), nullable=False)
     score_type: Mapped[str] = mapped_column(String(20), nullable=False)   # "Q" or "CS"
@@ -22,3 +23,4 @@ class ScoreRule(Base, TimestampMixin):
     meaning: Mapped[str | None] = mapped_column(String(150), nullable=True)
 
     client: Mapped["Client"] = relationship("Client", back_populates="score_rules")
+    company: Mapped["Company | None"] = relationship("Company")

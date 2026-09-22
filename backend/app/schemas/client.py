@@ -7,6 +7,7 @@ class ClientCreate(BaseModel):
     name: str
     country_id: int | None = None
     market_id: int | None = None
+    company_id: int | None = None
     default_language: str = "en"
     is_active: bool = True
     notes: str | None = None
@@ -17,6 +18,7 @@ class ClientUpdate(BaseModel):
     name: str | None = None
     country_id: int | None = None
     market_id: int | None = None
+    company_id: int | None = None
     default_language: str | None = None
     is_active: bool | None = None
     notes: str | None = None
@@ -51,6 +53,7 @@ class ClientResponse(BaseModel):
     name: str
     country: ClientCountryRef | None
     market: ClientMarketRef | None
+    company_id: int | None = None
     default_language: str
     is_active: bool
     notes: str | None

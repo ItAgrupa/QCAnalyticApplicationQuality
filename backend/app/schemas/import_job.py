@@ -11,6 +11,7 @@ class ImportJobResponse(BaseModel):
 
     id: int
     client_id: int
+    company_id: int | None = None
     file_name: str
     file_type: str
     status: str

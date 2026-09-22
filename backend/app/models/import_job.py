@@ -11,6 +11,7 @@ class ImportJob(Base, TimestampMixin):
     __tablename__ = "imports"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    company_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("companies.id", ondelete="RESTRICT"), nullable=True, index=True)
     client_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False)
     uploaded_by_user_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("users.id", ondelete="RESTRICT"), nullable=False)
     original_file_path: Mapped[str] = mapped_column(Text, nullable=False)
@@ -39,6 +40,7 @@ class ImportJob(Base, TimestampMixin):
     extraction_confidence: Mapped[Decimal | None] = mapped_column(Numeric(5, 2), nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
 
+    company: Mapped["Company | None"] = relationship("Company")
     client: Mapped["Client"] = relationship("Client", back_populates="imports")
     uploaded_by: Mapped["User"] = relationship("User", back_populates="imports")
     raw_payload: Mapped["ImportRawPayload | None"] = relationship("ImportRawPayload", back_populates="import_job", uselist=False)

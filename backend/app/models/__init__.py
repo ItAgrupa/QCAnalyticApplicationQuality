@@ -1,4 +1,4 @@
-# Import all models here so Alembic autogenerate can discover them.
+from app.models.company import Company
 from app.models.role import Role
 from app.models.user import User
 from app.models.country import Country
@@ -22,7 +22,7 @@ from app.models.corrective_action import CorrectiveAction
 from app.models.audit_log import AuditLog
 
 __all__ = [
-    "Role", "User", "Country", "Market", "Client",
+    "Company", "Role", "User", "Country", "Market", "Client",
     "Product", "Variety", "PackagingType",
     "ClientSpecification", "ReportTemplate",
     "QualityStandard", "ScoreRule",

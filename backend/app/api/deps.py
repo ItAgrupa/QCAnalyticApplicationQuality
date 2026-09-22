@@ -1,7 +1,7 @@
 """FastAPI dependency injection helpers."""
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Query, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError
 from sqlalchemy.orm import Session, joinedload
@@ -56,3 +56,14 @@ def require_role(*roles: str):
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
 DB = Annotated[Session, Depends(get_db)]
+
+
+def get_active_company_id(
+    company_id: Annotated[int | None, Query(description="Explicit company ID query parameter")] = None,
+    x_company_id: Annotated[int | None, Header(alias="X-Company-Id", description="Active company ID header")] = None,
+) -> int | None:
+    """Extract company_id from query parameter if present, falling back to X-Company-Id header."""
+    return company_id if company_id is not None else x_company_id
+
+
+ActiveCompanyId = Annotated[int | None, Depends(get_active_company_id)]

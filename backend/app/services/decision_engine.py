@@ -57,6 +57,7 @@ def _find_standard(
     packaging_type_id: Optional[int],
     parameter_code: str,
     as_of: Optional[date],
+    company_id: Optional[int] = None,
 ) -> Optional[QualityStandard]:
     """Return the most specific active standard, or None."""
     today = as_of or date.today()
@@ -73,14 +74,18 @@ def _find_standard(
         .filter(
             (QualityStandard.effective_to == None) | (QualityStandard.effective_to >= today)  # noqa: E711
         )
-        .all()
     )
+    if company_id:
+        q = q.filter((QualityStandard.company_id == company_id) | (QualityStandard.company_id.is_(None)))
 
-    if not q:
+    candidates = q.all()
+    if not candidates:
         return None
 
     def specificity(s: QualityStandard) -> int:
         score = 0
+        if s.company_id is not None:
+            score += 8
         if s.product_id is not None:
             score += 4
         if s.variety_id is not None:
@@ -91,7 +96,7 @@ def _find_standard(
 
     # Filter to only standards whose optional fields are compatible
     compatible = []
-    for s in q:
+    for s in candidates:
         if s.product_id is not None and s.product_id != product_id:
             continue
         if s.variety_id is not None and s.variety_id != variety_id:
@@ -114,17 +119,32 @@ def _find_score(
     parameter_code: str,
     score_type: str,  # "Q" or "CS"
     value: Decimal,
+    company_id: Optional[int] = None,
 ) -> Optional[str]:
     """Return the score label (e.g. "1", "A") matching the value, or None."""
-    rules = (
+    q = (
         db.query(ScoreRule)
         .filter(
-            ScoreRule.client_id == client_id,
             ScoreRule.parameter_code == parameter_code,
             ScoreRule.score_type == score_type,
         )
-        .all()
+        .filter(
+            (ScoreRule.client_id == client_id) | (ScoreRule.client_id.is_(None))
+        )
     )
+    if company_id:
+        q = q.filter((ScoreRule.company_id == company_id) | (ScoreRule.company_id.is_(None)))
+
+    rules = q.all()
+    # Prefer company-specific and client-specific rules first
+    rules.sort(
+        key=lambda r: (
+            r.client_id is not None,
+            r.company_id is not None,
+        ),
+        reverse=True,
+    )
+
     for r in rules:
         lo = r.min_value if r.min_value is not None else Decimal("-999999")
         hi = r.max_value if r.max_value is not None else Decimal("999999")
@@ -190,6 +210,7 @@ def analyse_load(db: Session, load_id: int, user_id: int) -> dict:
                 packaging_type_id=packaging_type_id,
                 parameter_code=meas.parameter_code,
                 as_of=as_of,
+                company_id=load.company_id,
             )
 
             if std is None:
@@ -215,12 +236,12 @@ def analyse_load(db: Session, load_id: int, user_id: int) -> dict:
                 meas.status = "PASS"
 
             # Q score
-            q = _find_score(db, load.client_id, meas.parameter_code, "Q", val)
+            q = _find_score(db, load.client_id, meas.parameter_code, "Q", val, company_id=load.company_id)
             if q:
                 pallet_q_scores.append(q)
 
             # CS score
-            cs = _find_score(db, load.client_id, meas.parameter_code, "CS", val)
+            cs = _find_score(db, load.client_id, meas.parameter_code, "CS", val, company_id=load.company_id)
             if cs:
                 pallet_cs_scores.append(cs)
 
@@ -267,6 +288,7 @@ def analyse_load(db: Session, load_id: int, user_id: int) -> dict:
             packaging_type_id=load.packaging_type_id,
             parameter_code=code,
             as_of=as_of,
+            company_id=load.company_id,
         )
         if std:
             summary.standard_min = std.min_value

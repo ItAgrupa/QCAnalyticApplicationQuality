@@ -24,6 +24,7 @@ import {
 import { runAnalysis } from '@/api/loads'
 import { listClients } from '@/api/masterData'
 import { useAuthStore } from '@/hooks/useAuthStore'
+import { useCompanyStore } from '@/hooks/useCompanyStore'
 
 // ── Status chip ───────────────────────────────────────────────────────────────
 const STATUS_META: Record<string, { color: 'default' | 'info' | 'warning' | 'success' | 'error'; icon: React.ReactNode }> = {
@@ -259,7 +260,11 @@ interface UploadZoneProps {
 }
 
 function UploadZone({ onUpload, uploading, defaultClientId = '' }: UploadZoneProps) {
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
+  const currentCompany = useCompanyStore(s => s.currentCompany)
+  const { data: clients } = useQuery({
+    queryKey: ['clients', currentCompany?.id],
+    queryFn: () => listClients({ page_size: 200, company_id: currentCompany?.id }),
+  })
   const [clientId, setClientId] = useState<string>(defaultClientId)
   const [dragOver, setDragOver] = useState(false)
   const [pendingFile, setPendingFile] = useState<File | null>(null)
@@ -435,6 +440,7 @@ function UploadZone({ onUpload, uploading, defaultClientId = '' }: UploadZonePro
 export default function ImportsPage() {
   const qc = useQueryClient()
   const user = useAuthStore(s => s.user)
+  const currentCompany = useCompanyStore(s => s.currentCompany)
   const canWrite = user?.role === 'Admin' || user?.role === 'Quality Manager'
 
   const [filterClient, setFilterClient] = useState<string>('')
@@ -453,12 +459,16 @@ export default function ImportsPage() {
   // Page-level drag-over: highlight the upload zone when user drags over the page
   const [pageDragOver, setPageDragOver] = useState(false)
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
+  const { data: clients } = useQuery({
+    queryKey: ['clients', currentCompany?.id],
+    queryFn: () => listClients({ page_size: 200, company_id: currentCompany?.id }),
+  })
   const { data, isFetching, refetch } = useQuery({
-    queryKey: ['imports', filterClient, filterStatus],
+    queryKey: ['imports', filterClient, filterStatus, currentCompany?.id],
     queryFn: () => listImports({
       client_id: filterClient || undefined,
       status: filterStatus || undefined,
+      company_id: currentCompany?.id,
       page_size: 100,
     }),
     refetchInterval: 5000,
@@ -472,7 +482,7 @@ export default function ImportsPage() {
     setDuplicateImport(null)
     setUploading(true)
     try {
-      await uploadImport(file, clientId)
+      await uploadImport(file, clientId, currentCompany?.id)
       qc.invalidateQueries({ queryKey: ['imports'] })
     } catch (e: unknown) {
       const err = e as { response?: { status?: number; data?: { detail?: unknown } } }
@@ -492,7 +502,7 @@ export default function ImportsPage() {
     } finally {
       setUploading(false)
     }
-  }, [qc])
+  }, [qc, currentCompany?.id])
 
   const handleBulkDelete = async () => {
     setBulkDeleting(true)
@@ -571,9 +581,22 @@ export default function ImportsPage() {
       {/* Page header */}
       <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={3}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>Import Reports</Typography>
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Typography variant="h5" fontWeight={700}>Import Reports</Typography>
+            {currentCompany && (
+              <Chip
+                label={currentCompany.name}
+                size="small"
+                sx={{
+                  bgcolor: currentCompany.id === 1 ? 'rgba(123, 31, 162, 0.1)' : 'rgba(46, 125, 50, 0.1)',
+                  color: currentCompany.id === 1 ? '#7B1FA2' : '#2E7D32',
+                  fontWeight: 700,
+                }}
+              />
+            )}
+          </Box>
           <Typography variant="body2" color="text.secondary">
-            Upload PDF quality reports — data is extracted automatically
+            Upload PDF quality reports for {currentCompany?.name || 'the workspace'} — data is extracted automatically
           </Typography>
         </Box>
         <Box display="flex" gap={1} alignItems="center">

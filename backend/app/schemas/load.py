@@ -60,6 +60,7 @@ class LoadOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    company_id: Optional[int] = None
     client_id: int
     market_id: Optional[int] = None
     import_id: int

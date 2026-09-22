@@ -65,6 +65,7 @@ export interface MetricTrend {
 export interface AnalyticsFilters {
   months?: number
   client_id?: number
+  company_id?: number
   period?: 'weekly' | 'monthly'
 }
 

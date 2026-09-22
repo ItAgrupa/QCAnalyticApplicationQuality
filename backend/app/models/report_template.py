@@ -12,6 +12,7 @@ class ReportTemplate(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     client_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("companies.id"), nullable=True, index=True)
     template_name: Mapped[str] = mapped_column(String(150), nullable=False)
     template_version: Mapped[str] = mapped_column(String(50), nullable=False)
     file_type: Mapped[str] = mapped_column(String(20), default="pdf", nullable=False)
@@ -20,3 +21,4 @@ class ReportTemplate(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     client: Mapped["Client"] = relationship("Client", back_populates="templates")
+    company: Mapped["Company | None"] = relationship("Company")

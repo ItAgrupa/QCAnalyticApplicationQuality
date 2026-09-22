@@ -25,6 +25,7 @@ import {
   type ParameterCompliance, type GrowerPerformance,
 } from '@/api/analytics'
 import { listClients } from '@/api/masterData'
+import { useCompanyStore } from '@/hooks/useCompanyStore'
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 const C = {
@@ -660,28 +661,32 @@ export default function AnalyticsPage() {
     }
   }
 
-  const filters = { months, client_id: clientId, period: timePeriod }
+  const currentCompany = useCompanyStore(s => s.currentCompany)
+  const filters = { months, client_id: clientId, company_id: currentCompany?.id, period: timePeriod }
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
+  const { data: clients } = useQuery({
+    queryKey: ['clients', currentCompany?.id],
+    queryFn: () => listClients({ page_size: 200, company_id: currentCompany?.id }),
+  })
 
   const overviewQ = useQuery({
-    queryKey: ['analytics-overview', months, clientId],
-    queryFn: () => getAnalyticsOverview({ months, client_id: clientId }),
+    queryKey: ['analytics-overview', months, clientId, currentCompany?.id],
+    queryFn: () => getAnalyticsOverview({ months, client_id: clientId, company_id: currentCompany?.id }),
   })
   const trendsQ = useQuery({
-    queryKey: ['analytics-trends', filters],
+    queryKey: ['analytics-trends', filters, currentCompany?.id],
     queryFn: () => getQualityTrends(filters),
   })
   const complianceQ = useQuery({
-    queryKey: ['analytics-compliance', months, clientId],
-    queryFn: () => getParameterCompliance({ months, client_id: clientId }),
+    queryKey: ['analytics-compliance', months, clientId, currentCompany?.id],
+    queryFn: () => getParameterCompliance({ months, client_id: clientId, company_id: currentCompany?.id }),
   })
   const growerQ = useQuery({
-    queryKey: ['analytics-grower', months, clientId],
-    queryFn: () => getGrowerPerformance({ months, client_id: clientId }),
+    queryKey: ['analytics-grower', months, clientId, currentCompany?.id],
+    queryFn: () => getGrowerPerformance({ months, client_id: clientId, company_id: currentCompany?.id }),
   })
   const metricQ = useQuery({
-    queryKey: ['analytics-metric', metricCode, months, clientId, timePeriod],
+    queryKey: ['analytics-metric', metricCode, months, clientId, timePeriod, currentCompany?.id],
     queryFn: () => getMetricTrend(metricCode, filters),
   })
 
@@ -693,9 +698,22 @@ export default function AnalyticsPage() {
       {/* ── Page header ────────────────────────────────────────────────── */}
       <Box display="flex" justifyContent="space-between" alignItems="flex-start" mb={3} flexWrap="wrap" gap={2}>
         <Box>
-          <Typography variant="h5" fontWeight={700}>Quality Analytics</Typography>
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Typography variant="h5" fontWeight={700}>Quality Analytics</Typography>
+            {currentCompany && (
+              <Chip
+                label={currentCompany.name}
+                size="small"
+                sx={{
+                  bgcolor: currentCompany.id === 1 ? 'rgba(123, 31, 162, 0.1)' : 'rgba(46, 125, 50, 0.1)',
+                  color: currentCompany.id === 1 ? '#7B1FA2' : '#2E7D32',
+                  fontWeight: 700,
+                }}
+              />
+            )}
+          </Box>
           <Typography variant="body2" color="text.secondary">
-            Trend analysis, compliance rates, and grower performance intelligence
+            {currentCompany?.name ? `${currentCompany.name} Workspace · ` : ''}Trend analysis, compliance rates, and grower performance intelligence
           </Typography>
         </Box>
         <Box display="flex" gap={1.5} alignItems="center" flexWrap="wrap">

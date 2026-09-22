@@ -4,6 +4,7 @@ from pydantic import BaseModel
 
 class TemplateCreate(BaseModel):
     client_id: int
+    company_id: int | None = None
     template_name: str
     parser_key: str
     template_version: str = "1"
@@ -13,6 +14,7 @@ class TemplateCreate(BaseModel):
 class TemplateResponse(BaseModel):
     id: int
     client_id: int
+    company_id: int | None = None
     template_name: str
     template_version: str
     parser_key: str

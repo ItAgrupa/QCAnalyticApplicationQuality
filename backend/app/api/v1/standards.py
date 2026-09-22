@@ -1,4 +1,4 @@
-﻿from typing import Annotated, Any
+from typing import Annotated, Any
 from fastapi import APIRouter, Body, Depends, Query, UploadFile, File, HTTPException, status
 from app.api.deps import CurrentUser, DB, require_role
 from app.core.permissions import RoleName
@@ -13,13 +13,14 @@ AdminOnly = Annotated[CurrentUser, Depends(require_role(RoleName.ADMIN))]
 
 @router.get("/", response_model=PaginatedResponse[QualityStandardResponse])
 def list_standards(current_user: CurrentUser, db: DB,
+                   company_id: int | None = None,
                    client_id: int | None = None, product_id: int | None = None,
                    variety_id: int | None = None, packaging_type_id: int | None = None,
                    parameter_group: str | None = None,
                    active_only: bool = True,
                    page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=500)):
     return svc.list_standards(db, client_id, product_id, variety_id,
-                               packaging_type_id, parameter_group, page, page_size, active_only)
+                               packaging_type_id, parameter_group, page, page_size, active_only, company_id=company_id)
 
 
 # ── Parameter Groups ──────────────────────────────────────────────────────────

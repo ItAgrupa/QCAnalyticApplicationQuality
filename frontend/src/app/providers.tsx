@@ -12,79 +12,89 @@ const queryClient = new QueryClient({
   },
 })
 
-// Magopco official brand colors (Brand Guide 2026, Pantone 2603C primary)
-const MAGOPCO_PURPLE = '#792482'       // Primary: RGB 121 36 130, Pantone 2603C
-const MAGOPCO_PURPLE_LIGHT = '#AF96DB' // Light: RGB 175 150 219, Pantone 2645C
-const MAGOPCO_PURPLE_DARK = '#3d004d'  // Deep dark for gradients
-const MAGOPCO_PURPLE_BG = '#F5EFF9'   // Tinted bg (20% primary)
-
 const theme = createTheme({
   palette: {
     primary: {
-      main: MAGOPCO_PURPLE,
-      light: MAGOPCO_PURPLE_LIGHT,
-      dark: MAGOPCO_PURPLE_DARK,
+      main: '#0F172A',       // Slate 900
+      light: '#334155',      // Slate 700
+      dark: '#020617',       // Slate 950
       contrastText: '#ffffff',
     },
     secondary: {
-      main: '#C6168D',       // Pantone 233C secondary pink
-      light: '#AF96DB',      // Pantone 2645C light purple
-      dark: '#792482',
+      main: '#2563EB',       // Modern Royal Blue accent
+      light: '#60A5FA',
+      dark: '#1D4ED8',
       contrastText: '#ffffff',
     },
-    background: {
-      default: '#FAF5FC',
-      paper: '#ffffff',
+    text: {
+      primary: '#0F172A',
+      secondary: '#64748B',
     },
-    error:   { main: '#D32F2F' },
-    warning: { main: '#F57C00' },
-    success: { main: '#388E3C' },
-    info:    { main: '#0288D1' },
+    divider: '#E2E8F0',
+    background: {
+      default: '#F8FAFC',    // Soft, crisp clean background
+      paper: '#FFFFFF',
+    },
+    error:   { main: '#EF4444' },
+    warning: { main: '#F59E0B' },
+    success: { main: '#10B981' },
+    info:    { main: '#3B82F6' },
   },
   typography: {
-    fontFamily: "'Roboto', sans-serif",
-    h4: { fontWeight: 700 },
-    h5: { fontWeight: 700 },
+    fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
+    h4: { fontWeight: 800, letterSpacing: '-0.02em' },
+    h5: { fontWeight: 700, letterSpacing: '-0.01em' },
     h6: { fontWeight: 600 },
+    subtitle1: { fontWeight: 600 },
+    button: { fontWeight: 600, textTransform: 'none' },
   },
   shape: { borderRadius: 10 },
   components: {
     MuiButton: {
       defaultProps: { disableElevation: true },
       styleOverrides: {
-        root: { textTransform: 'none', fontWeight: 600, borderRadius: 8 },
-        containedPrimary: {
-          background: `linear-gradient(135deg, ${MAGOPCO_PURPLE} 0%, ${MAGOPCO_PURPLE_LIGHT} 100%)`,
-          '&:hover': {
-            background: `linear-gradient(135deg, ${MAGOPCO_PURPLE_DARK} 0%, ${MAGOPCO_PURPLE} 100%)`,
-          },
+        root: {
+          textTransform: 'none',
+          fontWeight: 600,
+          borderRadius: 8,
+          transition: 'all 0.15s ease-in-out',
+        },
+        contained: {
+          boxShadow: '0 1px 2px 0 rgba(0, 0, 0, 0.05)',
         },
       },
     },
     MuiAppBar: {
       styleOverrides: {
         root: {
-          background: `linear-gradient(135deg, ${MAGOPCO_PURPLE_DARK} 0%, ${MAGOPCO_PURPLE} 100%)`,
-          boxShadow: '0 2px 12px rgba(121,36,130,0.25)',
+          backgroundColor: '#FFFFFF !important',
+          color: '#0F172A !important',
+          boxShadow: 'none !important',
+          borderBottom: '1px solid #E2E8F0',
         },
       },
     },
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          borderRight: `1px solid ${MAGOPCO_PURPLE_BG}`,
-          background: '#FDFAFF',
+          backgroundColor: '#FFFFFF',
+          borderRight: '1px solid #E2E8F0',
         },
       },
     },
     MuiCard: {
       styleOverrides: {
-        root: { borderRadius: 12, boxShadow: '0 2px 16px rgba(121,36,130,0.08)' },
+        root: {
+          borderRadius: 16,
+          backgroundColor: '#FFFFFF',
+          border: '1px solid #E2E8F0',
+          boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+        },
       },
     },
     MuiChip: {
       styleOverrides: {
-        root: { fontWeight: 600 },
+        root: { fontWeight: 600, borderRadius: 6 },
       },
     },
     MuiListItemButton: {
@@ -93,11 +103,16 @@ const theme = createTheme({
           borderRadius: 8,
           margin: '2px 8px',
           width: 'calc(100% - 16px)',
+          color: '#475569',
           '&.Mui-selected': {
-            backgroundColor: MAGOPCO_PURPLE_BG,
-            color: MAGOPCO_PURPLE,
-            '& .MuiListItemIcon-root': { color: MAGOPCO_PURPLE },
-            '&:hover': { backgroundColor: '#EAD4F5' },
+            backgroundColor: '#F1F5F9',
+            color: '#0F172A',
+            fontWeight: 600,
+            '& .MuiListItemIcon-root': { color: '#0F172A' },
+            '&:hover': { backgroundColor: '#E2E8F0' },
+          },
+          '&:hover': {
+            backgroundColor: '#F8FAFC',
           },
         },
       },

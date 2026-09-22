@@ -14,6 +14,7 @@ class QualityStandard(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     client_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("companies.id"), nullable=True, index=True)
     market_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("markets.id"), nullable=True)
     product_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("products.id"), nullable=True)
     variety_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("varieties.id"), nullable=True)
@@ -32,3 +33,4 @@ class QualityStandard(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
     client: Mapped["Client"] = relationship("Client", back_populates="quality_standards")
+    company: Mapped["Company | None"] = relationship("Company")

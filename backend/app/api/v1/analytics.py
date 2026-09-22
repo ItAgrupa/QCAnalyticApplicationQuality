@@ -8,7 +8,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter, Query
 from sqlalchemy import case, func, String
 
-from app.api.deps import CurrentUser, DB
+from app.api.deps import CurrentUser, DB, ActiveCompanyId
 from app.models.load import Load
 from app.models.pallet import Pallet
 from app.models.pallet_measurement import PalletMeasurement
@@ -34,6 +34,7 @@ def analytics_overview(
     db: DB,
     months: int = Query(default=12, ge=1, le=60),
     client_id: Optional[int] = Query(default=None),
+    company_id: ActiveCompanyId = None,
 ):
     """Scalar KPIs: overall pass rate, avg quality score, load count, worst parameter."""
     cutoff = _cutoff(months)
@@ -42,6 +43,8 @@ def analytics_overview(
         Load.inspection_date >= cutoff,
         Load.inspection_date.isnot(None),
     )
+    if company_id:
+        load_q = load_q.filter(Load.company_id == company_id)
     if client_id:
         load_q = load_q.filter(Load.client_id == client_id)
     load_ids = [lo.id for lo in load_q.with_entities(Load.id).all()]
@@ -150,6 +153,7 @@ def quality_trends(
     period: Literal["weekly", "monthly"] = "monthly",
     months: int = Query(default=12, ge=1, le=60),
     client_id: Optional[int] = Query(default=None),
+    company_id: ActiveCompanyId = None,
 ):
     """Pass/fail pallet counts and quality score per week or month."""
     cutoff = _cutoff(months)
@@ -168,6 +172,8 @@ def quality_trends(
         .group_by("period")
         .order_by("period")
     )
+    if company_id:
+        load_q = load_q.filter(Load.company_id == company_id)
     if client_id:
         load_q = load_q.filter(Load.client_id == client_id)
     load_rows = {r.period: r for r in load_q.all()}
@@ -189,6 +195,8 @@ def quality_trends(
         .group_by("period")
         .order_by("period")
     )
+    if company_id:
+        pallet_q = pallet_q.filter(Load.company_id == company_id)
     if client_id:
         pallet_q = pallet_q.filter(Load.client_id == client_id)
     pallet_rows = {r.period: r for r in pallet_q.all()}
@@ -224,6 +232,7 @@ def parameter_compliance(
     db: DB,
     months: int = Query(default=12, ge=1, le=60),
     client_id: Optional[int] = Query(default=None),
+    company_id: ActiveCompanyId = None,
 ):
     """Per-parameter compliance rate, avg value, and standard threshold."""
     cutoff = _cutoff(months)
@@ -232,6 +241,8 @@ def parameter_compliance(
         Load.inspection_date >= cutoff,
         Load.inspection_date.isnot(None),
     )
+    if company_id:
+        load_ids_q = load_ids_q.filter(Load.company_id == company_id)
     if client_id:
         load_ids_q = load_ids_q.filter(Load.client_id == client_id)
     load_ids = [r.id for r in load_ids_q.all()]
@@ -294,6 +305,7 @@ def grower_performance(
     db: DB,
     months: int = Query(default=12, ge=1, le=60),
     client_id: Optional[int] = Query(default=None),
+    company_id: ActiveCompanyId = None,
     limit: int = Query(default=12, ge=3, le=30),
 ):
     """Per-grower pass rate and pallet volume."""
@@ -303,6 +315,8 @@ def grower_performance(
         Load.inspection_date >= cutoff,
         Load.inspection_date.isnot(None),
     )
+    if company_id:
+        load_ids_q = load_ids_q.filter(Load.company_id == company_id)
     if client_id:
         load_ids_q = load_ids_q.filter(Load.client_id == client_id)
     load_ids = [r.id for r in load_ids_q.all()]
@@ -363,6 +377,7 @@ def metric_trend(
     period: Literal["weekly", "monthly"] = "monthly",
     months: int = Query(default=12, ge=1, le=60),
     client_id: Optional[int] = Query(default=None),
+    company_id: ActiveCompanyId = None,
 ):
     """Avg/min/max of a single parameter over time, with standard reference band."""
     cutoff = _cutoff(months)
@@ -389,6 +404,8 @@ def metric_trend(
         .group_by("period")
         .order_by("period")
     )
+    if company_id:
+        q = q.filter(Load.company_id == company_id)
     if client_id:
         q = q.filter(Load.client_id == client_id)
 

@@ -16,6 +16,7 @@ import {
   HourglassTop as PendingIcon,
 } from '@mui/icons-material'
 import { getDashboard, type MeasurementAverage } from '@/api/dashboard'
+import { useCompanyStore } from '@/hooks/useCompanyStore'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Parameters hidden by default — user reveals with "See More"
@@ -276,10 +277,11 @@ function SectionBody({ children }: { children: React.ReactNode }) {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const [showMore, setShowMore] = useState(false)
+  const currentCompany = useCompanyStore(s => s.currentCompany)
 
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['dashboard'],
-    queryFn: getDashboard,
+    queryKey: ['dashboard', currentCompany?.id],
+    queryFn: () => getDashboard(currentCompany?.id),
     refetchInterval: 30_000,
   })
 
@@ -317,11 +319,24 @@ export default function DashboardPage() {
       {/* Page title row */}
       <Box display="flex" alignItems="center" justifyContent="space-between" mb={2.5}>
         <Box>
-          <Typography variant="h5" fontWeight={800} gutterBottom={false}>
-            Quality Intelligence Dashboard
-          </Typography>
+          <Box display="flex" alignItems="center" gap={1.5}>
+            <Typography variant="h5" fontWeight={800} gutterBottom={false}>
+              Quality Intelligence Dashboard
+            </Typography>
+            {currentCompany && (
+              <Chip
+                label={currentCompany.name}
+                size="small"
+                sx={{
+                  bgcolor: currentCompany.id === 1 ? 'rgba(123, 31, 162, 0.1)' : 'rgba(46, 125, 50, 0.1)',
+                  color: currentCompany.id === 1 ? '#7B1FA2' : '#2E7D32',
+                  fontWeight: 700,
+                }}
+              />
+            )}
+          </Box>
           <Typography variant="caption" color="text.secondary">
-            Fresh Produce Inspection Analytics · auto-refreshes every 30 s
+            {currentCompany?.name ? `${currentCompany.name} Workspace · ` : ''}Fresh Produce Inspection Analytics · auto-refreshes every 30 s
           </Typography>
         </Box>
         <Stack direction="row" spacing={1} alignItems="center">

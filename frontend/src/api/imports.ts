@@ -83,10 +83,13 @@ export const listImports = (p?: object) =>
 export const getImport = (id: number) =>
   axiosClient.get<ImportJobDetail>(`/imports/${id}`).then(r => r.data)
 
-export const uploadImport = (file: File, clientId: number) => {
+export const uploadImport = (file: File, clientId: number, companyId?: number) => {
   const form = new FormData()
   form.append('file', file)
   form.append('client_id', String(clientId))
+  if (companyId) {
+    form.append('company_id', String(companyId))
+  }
   return axiosClient.post<ImportJob>('/imports/upload', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   }).then(r => r.data)

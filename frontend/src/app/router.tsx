@@ -7,6 +7,7 @@ import { lazy, Suspense } from 'react'
 import { CircularProgress, Box } from '@mui/material'
 
 const LoginPage = lazy(() => import('@/pages/Login/LoginPage'))
+const CompanySelectPage = lazy(() => import('@/pages/CompanySelect/CompanySelectPage'))
 const DashboardPage = lazy(() => import('@/pages/Dashboard/DashboardPage'))
 const ImportsPage = lazy(() => import('@/pages/Imports/ImportsPage'))
 const ValidationPage = lazy(() => import('@/pages/Validation/ValidationPage'))
@@ -26,9 +27,14 @@ function LoadingFallback() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  // Read localStorage directly — reliable on a fresh page reload before any
-  // React subscriber has had a chance to register with the auth store.
   if (!localStorage.getItem('access_token')) return <Navigate to="/login" replace />
+  return <>{children}</>
+}
+
+function RequireCompany({ children }: { children: React.ReactNode }) {
+  if (!localStorage.getItem('active_company')) {
+    return <Navigate to="/select-company" replace />
+  }
   return <>{children}</>
 }
 
@@ -46,6 +52,11 @@ function RequireRole({
   return <>{children}</>
 }
 
+function RootRedirect() {
+  const hasCompany = Boolean(localStorage.getItem('active_company'))
+  return <Navigate to={hasCompany ? "/dashboard" : "/select-company"} replace />
+}
+
 export function AppRouter() {
   return (
     <BrowserRouter>
@@ -53,6 +64,17 @@ export function AppRouter() {
         <Routes>
           <Route path="/login" element={<LoginPage />} />
 
+          {/* Standalone Company Selection Portal (Post-Login) */}
+          <Route
+            path="/select-company"
+            element={
+              <ProtectedRoute>
+                <CompanySelectPage />
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Main Layout containing Workspace modules + Global Settings */}
           <Route
             path="/"
             element={
@@ -61,13 +83,59 @@ export function AppRouter() {
               </ProtectedRoute>
             }
           >
-            <Route index element={<Navigate to="/dashboard" replace />} />
-            <Route path="dashboard" element={<DashboardPage />} />
-            <Route path="imports" element={<ImportsPage />} />
-            <Route path="imports/:importId/validate" element={<ValidationPage />} />
-            <Route path="reports" element={<ReportsPage />} />
-            <Route path="reports/:loadId" element={<LoadDetailPage />} />
-            <Route path="analytics" element={<AnalyticsPage />} />
+            <Route index element={<RootRedirect />} />
+
+            {/* Operational Workspace Modules (Require Company Selection) */}
+            <Route
+              path="dashboard"
+              element={
+                <RequireCompany>
+                  <DashboardPage />
+                </RequireCompany>
+              }
+            />
+            <Route
+              path="imports"
+              element={
+                <RequireCompany>
+                  <ImportsPage />
+                </RequireCompany>
+              }
+            />
+            <Route
+              path="imports/:importId/validate"
+              element={
+                <RequireCompany>
+                  <ValidationPage />
+                </RequireCompany>
+              }
+            />
+            <Route
+              path="reports"
+              element={
+                <RequireCompany>
+                  <ReportsPage />
+                </RequireCompany>
+              }
+            />
+            <Route
+              path="reports/:loadId"
+              element={
+                <RequireCompany>
+                  <LoadDetailPage />
+                </RequireCompany>
+              }
+            />
+            <Route
+              path="analytics"
+              element={
+                <RequireCompany>
+                  <AnalyticsPage />
+                </RequireCompany>
+              }
+            />
+
+            {/* Global Settings & Administration (Shared across companies) */}
             <Route path="settings/*" element={<SettingsPage />} />
             <Route
               path="users"
@@ -87,7 +155,7 @@ export function AppRouter() {
             />
           </Route>
 
-          <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          <Route path="*" element={<RootRedirect />} />
         </Routes>
       </Suspense>
     </BrowserRouter>

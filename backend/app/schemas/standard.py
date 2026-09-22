@@ -5,6 +5,7 @@ from pydantic import BaseModel, model_validator
 
 class QualityStandardCreate(BaseModel):
     client_id: int
+    company_id: int | None = None
     market_id: int | None = None
     product_id: int
     variety_id: int | None = None
@@ -30,6 +31,7 @@ class QualityStandardCreate(BaseModel):
 
 
 class QualityStandardUpdate(BaseModel):
+    company_id: int | None = None
     parameter_name: str | None = None
     parameter_group: str | None = None
     min_value: Decimal | None = None
@@ -44,6 +46,7 @@ class QualityStandardUpdate(BaseModel):
 class QualityStandardResponse(BaseModel):
     id: int
     client_id: int
+    company_id: int | None = None
     market_id: int | None
     product_id: int
     variety_id: int | None

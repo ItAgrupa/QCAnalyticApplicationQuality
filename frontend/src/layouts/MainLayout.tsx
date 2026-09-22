@@ -3,7 +3,7 @@ import { useState } from 'react'
 import {
   Box, Drawer, AppBar, Toolbar, Typography, IconButton,
   List, ListItem, ListItemButton, ListItemIcon, ListItemText,
-  Divider, Avatar, Menu, MenuItem, Tooltip, Chip,
+  Divider, Avatar, Menu, MenuItem, Tooltip, Chip, Button,
 } from '@mui/material'
 import {
   Menu as MenuIcon,
@@ -16,13 +16,17 @@ import {
   Security as AuditIcon,
   Logout as LogoutIcon,
   AccountCircle as AccountIcon,
+  SwapHoriz as SwitchIcon,
+  Business as BusinessIcon,
 } from '@mui/icons-material'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/hooks/useAuthStore'
-import { MagopcoLogoMark, MagopcoLogoHorizontal } from '@/components/MagopcoLogo'
+import { useCompanyStore } from '@/hooks/useCompanyStore'
+import { MagopcoLogoHorizontal } from '@/components/MagopcoLogo'
+import { AgrupaMarcaLogoHorizontal } from '@/components/AgrupaMarcaLogo'
 
-// permanent sidebar width (laptop / large tablet)
-const DRAWER_WIDTH = 248
+// Permanent sidebar width
+const DRAWER_WIDTH = 256
 
 const NAV_ITEMS = [
   { label: 'Dashboard',     icon: <DashboardIcon fontSize="small" />,  path: '/dashboard' },
@@ -32,9 +36,9 @@ const NAV_ITEMS = [
 ]
 
 const NAV_ITEMS_ADMIN = [
-  { label: 'Settings',  icon: <SettingsIcon fontSize="small" />, path: '/settings' },
-  { label: 'Users',     icon: <PeopleIcon fontSize="small" />,   path: '/users' },
-  { label: 'Audit Log', icon: <AuditIcon fontSize="small" />,    path: '/audit' },
+  { label: 'Global Settings', icon: <SettingsIcon fontSize="small" />, path: '/settings', isGlobal: true },
+  { label: 'Users',           icon: <PeopleIcon fontSize="small" />,   path: '/users' },
+  { label: 'Audit Log',       icon: <AuditIcon fontSize="small" />,    path: '/audit' },
 ]
 
 export function MainLayout() {
@@ -44,79 +48,153 @@ export function MainLayout() {
   const location = useLocation()
   const user = useAuthStore((s) => s.user)
   const logout = useAuthStore((s) => s.logout)
+  const currentCompany = useCompanyStore((s) => s.currentCompany)
 
   const isSelected = (path: string) => location.pathname.startsWith(path)
 
-  const NavList = ({ items }: { items: typeof NAV_ITEMS }) => (
+  const isAgrupaMarca = currentCompany?.code === 'AGRUPA_MARCA'
+  const accentColor = isAgrupaMarca ? '#00843D' : '#792482'
+
+  const NavList = ({ items }: { items: typeof NAV_ITEMS | typeof NAV_ITEMS_ADMIN }) => (
     <List dense disablePadding>
-      {items.map((item) => (
-        <ListItem key={item.path} disablePadding sx={{ mb: 0.5 }}>
-          <ListItemButton
-            selected={isSelected(item.path)}
-            onClick={() => { navigate(item.path); setMobileOpen(false) }}
-            sx={{ borderRadius: 2, mx: 1 }}
-          >
-            <ListItemIcon
+      {items.map((item) => {
+        const active = isSelected(item.path)
+        return (
+          <ListItem key={item.path} disablePadding sx={{ mb: 0.5 }}>
+            <ListItemButton
+              selected={active}
+              onClick={() => { navigate(item.path); setMobileOpen(false) }}
               sx={{
-                minWidth: 36,
-                color: isSelected(item.path) ? 'primary.main' : 'text.secondary',
+                borderRadius: 2,
+                mx: 1,
+                py: 0.9,
+                color: active ? '#0F172A' : '#475569',
+                bgcolor: active ? '#F1F5F9 !important' : 'transparent',
+                '&:hover': { bgcolor: '#F8FAFC' },
               }}
             >
-              {item.icon}
-            </ListItemIcon>
-            <ListItemText
-              primary={item.label}
-              primaryTypographyProps={{
-                fontSize: 14,
-                fontWeight: isSelected(item.path) ? 600 : 400,
-              }}
-            />
-          </ListItemButton>
-        </ListItem>
-      ))}
+              <ListItemIcon
+                sx={{
+                  minWidth: 34,
+                  color: active ? accentColor : '#64748B',
+                }}
+              >
+                {item.icon}
+              </ListItemIcon>
+              <ListItemText
+                primary={
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <span>{item.label}</span>
+                    {'isGlobal' in item && item.isGlobal && (
+                      <Chip label="Global" size="small" sx={{ height: 18, fontSize: 10, bgcolor: '#F1F5F9', color: '#64748B', border: '1px solid #E2E8F0' }} />
+                    )}
+                  </Box>
+                }
+                primaryTypographyProps={{
+                  fontSize: 13.5,
+                  fontWeight: active ? 700 : 500,
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+        )
+      })}
     </List>
   )
 
   const drawer = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Logo area */}
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', bgcolor: '#FFFFFF' }}>
+      {/* Logo & Company Scope area */}
       <Box
         sx={{
           px: 2.5,
-          py: 2,
+          py: 2.5,
           display: 'flex',
-          alignItems: 'center',
+          flexDirection: 'column',
           gap: 1.5,
-          borderBottom: '1px solid',
-          borderColor: 'rgba(121,36,130,0.1)',
-          minHeight: 64,
+          borderBottom: '1px solid #E2E8F0',
+          minHeight: 84,
+          bgcolor: '#FFFFFF',
         }}
       >
-        <MagopcoLogoHorizontal size={32} color="#792482" />
+        <Box display="flex" alignItems="center" justifyContent="space-between">
+          {isAgrupaMarca ? (
+            <AgrupaMarcaLogoHorizontal size={34} />
+          ) : (
+            <MagopcoLogoHorizontal size={34} />
+          )}
+
+          <Tooltip title="Switch Company Workspace">
+            <IconButton
+              size="small"
+              onClick={() => navigate('/select-company')}
+              sx={{
+                bgcolor: '#F8FAFC',
+                border: '1px solid #E2E8F0',
+                color: '#64748B',
+                '&:hover': { bgcolor: '#F1F5F9', color: '#0F172A' },
+              }}
+            >
+              <SwitchIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
+
+        <Box display="flex" alignItems="center" gap={1}>
+          <Chip
+            icon={<BusinessIcon sx={{ fontSize: '13px !important', color: `${accentColor} !important` }} />}
+            label={currentCompany?.name ?? 'Select Company'}
+            size="small"
+            sx={{
+              bgcolor: isAgrupaMarca ? 'rgba(0, 132, 61, 0.08)' : 'rgba(121, 36, 130, 0.08)',
+              color: accentColor,
+              fontWeight: 700,
+              fontSize: 11,
+              height: 24,
+              border: isAgrupaMarca ? '1px solid rgba(0, 132, 61, 0.2)' : '1px solid rgba(121, 36, 130, 0.2)',
+            }}
+          />
+          <Button
+            size="small"
+            variant="text"
+            onClick={() => navigate('/select-company')}
+            sx={{
+              p: 0,
+              minWidth: 0,
+              fontSize: 11,
+              textTransform: 'none',
+              color: '#64748B',
+              textDecoration: 'underline',
+              '&:hover': { color: '#0F172A' },
+            }}
+          >
+            Switch
+          </Button>
+        </Box>
       </Box>
 
       {/* Main nav */}
-      <Box sx={{ pt: 1.5, px: 0 }}>
+      <Box sx={{ pt: 2, px: 0 }}>
         <Typography
           variant="caption"
-          color="text.disabled"
-          sx={{ px: 2.5, pb: 0.5, display: 'block', textTransform: 'uppercase', letterSpacing: '0.08em' }}
+          color="#94A3B8"
+          sx={{ px: 2.5, pb: 0.75, display: 'block', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}
         >
-          Main
+          {currentCompany?.name ?? 'Workspace'} Modules
         </Typography>
         <NavList items={NAV_ITEMS} />
       </Box>
 
-      <Divider sx={{ mx: 2, my: 1.5, borderColor: 'rgba(121,36,130,0.1)' }} />
+      <Divider sx={{ mx: 2, my: 2 }} />
 
       {/* Admin nav */}
       <Box sx={{ px: 0 }}>
         <Typography
           variant="caption"
-          color="text.disabled"
-          sx={{ px: 2.5, pb: 0.5, display: 'block', textTransform: 'uppercase', letterSpacing: '0.08em' }}
+          color="#94A3B8"
+          sx={{ px: 2.5, pb: 0.75, display: 'block', textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 700 }}
         >
-          Administration
+          Global Administration
         </Typography>
         <NavList items={NAV_ITEMS_ADMIN} />
       </Box>
@@ -127,31 +205,34 @@ export function MainLayout() {
       <Box
         sx={{
           p: 2,
-          borderTop: '1px solid rgba(121,36,130,0.1)',
+          borderTop: '1px solid #E2E8F0',
           display: 'flex',
           alignItems: 'center',
           gap: 1.5,
+          bgcolor: '#FFFFFF',
         }}
       >
         <Avatar
           sx={{
-            width: 32, height: 32,
-            background: 'linear-gradient(135deg, #792482, #AB47BC)',
-            fontSize: 13, fontWeight: 700,
+            width: 34,
+            height: 34,
+            bgcolor: '#F1F5F9',
+            color: '#0F172A',
+            border: '1px solid #E2E8F0',
+            fontSize: 13,
+            fontWeight: 700,
           }}
         >
           {user?.full_name?.charAt(0) ?? '?'}
         </Avatar>
         <Box sx={{ minWidth: 0, flex: 1 }}>
-          <Typography variant="body2" fontWeight={600} noWrap>
+          <Typography variant="body2" fontWeight={600} noWrap color="#0F172A">
             {user?.full_name ?? 'User'}
           </Typography>
           <Chip
             label={user?.role ?? ''}
             size="small"
-            color="primary"
-            variant="outlined"
-            sx={{ height: 18, fontSize: 10, mt: 0.25 }}
+            sx={{ height: 18, fontSize: 10, mt: 0.25, bgcolor: '#F8FAFC', border: '1px solid #E2E8F0', color: '#475569' }}
           />
         </Box>
       </Box>
@@ -159,42 +240,108 @@ export function MainLayout() {
   )
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh' }}>
-      {/* ── App bar ─────────────────────────────────── */}
-      <AppBar position="fixed" sx={{ zIndex: (theme) => theme.zIndex.drawer + 1 }}>
-        <Toolbar sx={{ gap: 1 }}>
+    <Box sx={{ display: 'flex', height: '100vh', bgcolor: '#F8FAFC' }}>
+      {/* ── App bar (Completely White, Clean & Organized) ─────────── */}
+      <AppBar
+        position="fixed"
+        elevation={0}
+        sx={{
+          zIndex: (theme) => theme.zIndex.drawer + 1,
+          bgcolor: '#FFFFFF !important',
+          color: '#0F172A !important',
+          boxShadow: 'none !important',
+          borderBottom: '1px solid #E2E8F0',
+        }}
+      >
+        <Toolbar sx={{ gap: 1.5, minHeight: 64, px: { xs: 2, md: 3 } }}>
           {/* Hamburger — shown on phone & tablet (below md) */}
           <IconButton
-            color="inherit"
             edge="start"
             onClick={() => setMobileOpen(true)}
-            sx={{ display: { md: 'none' } }}
+            sx={{ display: { md: 'none' }, color: '#475569' }}
           >
             <MenuIcon />
           </IconButton>
 
-          {/* Logo in AppBar — phone & tablet (no permanent sidebar visible) */}
+          {/* Logo in AppBar — phone & tablet */}
           <Box sx={{ display: { xs: 'flex', md: 'none' }, alignItems: 'center', gap: 1 }}>
-            <MagopcoLogoMark size={26} color="white" />
-            <Typography variant="subtitle1" fontWeight={700} letterSpacing="0.01em">
-              Magopco
-            </Typography>
+            {isAgrupaMarca ? (
+              <AgrupaMarcaLogoHorizontal size={28} />
+            ) : (
+              <MagopcoLogoHorizontal size={28} />
+            )}
           </Box>
 
-          {/* Inline logo — laptop (permanent sidebar already visible, but show brand in bar) */}
-          <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center' }}>
-            <MagopcoLogoHorizontal size={30} color="white" textColor="white" />
+          {/* Inline logo & switch button — laptop */}
+          <Box sx={{ display: { xs: 'none', md: 'flex' }, alignItems: 'center', gap: 2 }}>
+            {isAgrupaMarca ? (
+              <AgrupaMarcaLogoHorizontal size={34} />
+            ) : (
+              <MagopcoLogoHorizontal size={34} />
+            )}
+
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<SwitchIcon sx={{ fontSize: 16 }} />}
+              onClick={() => navigate('/select-company')}
+              sx={{
+                color: '#475569',
+                borderColor: '#E2E8F0',
+                bgcolor: '#FFFFFF',
+                textTransform: 'none',
+                borderRadius: 2,
+                fontSize: 12,
+                fontWeight: 600,
+                py: 0.4,
+                px: 1.5,
+                '&:hover': {
+                  borderColor: '#CBD5E1',
+                  bgcolor: '#F8FAFC',
+                  color: '#0F172A',
+                },
+              }}
+            >
+              Switch Company
+            </Button>
           </Box>
 
           <Box sx={{ flexGrow: 1 }} />
 
+          {/* Direct link to Global Settings in top bar */}
+          <Tooltip title="Global Settings">
+            <Button
+              variant="outlined"
+              size="small"
+              startIcon={<SettingsIcon sx={{ fontSize: 16 }} />}
+              onClick={() => navigate('/settings')}
+              sx={{
+                mr: 1,
+                borderColor: '#E2E8F0',
+                color: '#475569',
+                bgcolor: '#FFFFFF',
+                borderRadius: 2,
+                fontSize: 12,
+                fontWeight: 600,
+                textTransform: 'none',
+                '&:hover': { borderColor: '#CBD5E1', bgcolor: '#F8FAFC', color: '#0F172A' },
+              }}
+            >
+              Settings
+            </Button>
+          </Tooltip>
+
           <Tooltip title={user?.full_name ?? 'Account'}>
-            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} color="inherit" size="small">
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} size="small">
               <Avatar
                 sx={{
-                  width: 32, height: 32,
-                  background: 'rgba(255,255,255,0.25)',
-                  fontSize: 13, fontWeight: 700,
+                  width: 34,
+                  height: 34,
+                  bgcolor: '#F1F5F9',
+                  color: '#0F172A',
+                  border: '1px solid #E2E8F0',
+                  fontSize: 13,
+                  fontWeight: 700,
                 }}
               >
                 {user?.full_name?.charAt(0) ?? <AccountIcon fontSize="small" />}
@@ -208,19 +355,37 @@ export function MainLayout() {
             onClose={() => setAnchorEl(null)}
             transformOrigin={{ horizontal: 'right', vertical: 'top' }}
             anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-            PaperProps={{ elevation: 3, sx: { mt: 0.5, minWidth: 180, borderRadius: 2 } }}
+            PaperProps={{
+              elevation: 0,
+              sx: {
+                mt: 1,
+                minWidth: 220,
+                borderRadius: 3,
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.04)',
+              },
+            }}
           >
             <Box sx={{ px: 2, py: 1.5 }}>
-              <Typography variant="body2" fontWeight={600}>{user?.full_name}</Typography>
+              <Typography variant="body2" fontWeight={700} color="#0F172A">{user?.full_name}</Typography>
               <Typography variant="caption" color="text.secondary">{user?.email}</Typography>
             </Box>
             <Divider />
+            <MenuItem onClick={() => { setAnchorEl(null); navigate('/select-company') }} sx={{ gap: 1.5, py: 1.2 }}>
+              <SwitchIcon fontSize="small" sx={{ color: '#64748B' }} />
+              <Typography variant="body2" fontWeight={500}>Switch Company</Typography>
+            </MenuItem>
+            <MenuItem onClick={() => { setAnchorEl(null); navigate('/settings') }} sx={{ gap: 1.5, py: 1.2 }}>
+              <SettingsIcon fontSize="small" sx={{ color: '#64748B' }} />
+              <Typography variant="body2" fontWeight={500}>Global Settings</Typography>
+            </MenuItem>
+            <Divider />
             <MenuItem
               onClick={() => { logout(); window.location.href = '/login' }}
-              sx={{ gap: 1.5, py: 1.2, color: 'error.main' }}
+              sx={{ gap: 1.5, py: 1.2, color: '#EF4444' }}
             >
               <LogoutIcon fontSize="small" />
-              <Typography variant="body2">Sign out</Typography>
+              <Typography variant="body2" fontWeight={500}>Sign out</Typography>
             </MenuItem>
           </Menu>
         </Toolbar>
@@ -236,6 +401,8 @@ export function MainLayout() {
           '& .MuiDrawer-paper': {
             width: DRAWER_WIDTH,
             boxSizing: 'border-box',
+            backgroundColor: '#FFFFFF',
+            borderRight: '1px solid #E2E8F0',
           },
         }}
         open
@@ -251,7 +418,11 @@ export function MainLayout() {
         ModalProps={{ keepMounted: true }}
         sx={{
           display: { xs: 'block', md: 'none' },
-          '& .MuiDrawer-paper': { width: DRAWER_WIDTH },
+          '& .MuiDrawer-paper': {
+            width: DRAWER_WIDTH,
+            backgroundColor: '#FFFFFF',
+            borderRight: '1px solid #E2E8F0',
+          },
         }}
       >
         {drawer}
@@ -262,14 +433,11 @@ export function MainLayout() {
         component="main"
         sx={{
           flexGrow: 1,
-          // Responsive padding: tighter on phone, comfortable on laptop
-          p: { xs: 2, sm: 2.5, md: 3 },
-          // Space below AppBar
-          mt: { xs: 7, sm: 8 },
+          p: { xs: 2.5, sm: 3, md: 3.5 },
+          mt: { xs: 8, sm: 8.5 },
           overflow: 'auto',
-          bgcolor: 'background.default',
+          bgcolor: '#F8FAFC',
           minHeight: '100vh',
-          // On laptop the permanent drawer pushes the content; on smaller screens it's full width
           width: { xs: '100%', md: `calc(100% - ${DRAWER_WIDTH}px)` },
         }}
       >

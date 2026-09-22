@@ -1,4 +1,4 @@
-﻿from typing import Annotated
+from typing import Annotated
 from fastapi import APIRouter, Depends, Query, status
 from app.api.deps import CurrentUser, DB, require_role
 from app.core.permissions import RoleName
@@ -12,9 +12,10 @@ AdminOnly = Annotated[CurrentUser, Depends(require_role(RoleName.ADMIN))]
 
 @router.get("/", response_model=PaginatedResponse[ScoreRuleResponse])
 def list_score_rules(current_user: CurrentUser, db: DB,
+                     company_id: int | None = None,
                      client_id: int | None = None, score_type: str | None = None,
                      page: int = Query(1, ge=1), page_size: int = Query(100, ge=1, le=500)):
-    return svc.list_score_rules(db, client_id, score_type, page, page_size)
+    return svc.list_score_rules(db, client_id, score_type, page, page_size, company_id=company_id)
 
 
 @router.post("/", response_model=ScoreRuleResponse, status_code=status.HTTP_201_CREATED)

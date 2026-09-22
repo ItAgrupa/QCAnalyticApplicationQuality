@@ -46,8 +46,8 @@ def submit_validation(
         db.delete(job.load)
         db.flush()
 
-    # ── Create Load ──────────────────────────────────────────────────────────
     load = Load(
+        company_id=job.company_id,
         client_id=data.client_id,
         import_id=import_id,
         market_id=data.market_id,

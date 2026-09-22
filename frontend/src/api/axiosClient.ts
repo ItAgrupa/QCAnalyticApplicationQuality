@@ -5,10 +5,20 @@ const axiosClient = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Attach bearer token to every request
+// Attach bearer token and active company to every request
 axiosClient.interceptors.request.use((config) => {
   const token = localStorage.getItem('access_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
+
+  const companyRaw = localStorage.getItem('active_company')
+  if (companyRaw) {
+    try {
+      const company = JSON.parse(companyRaw)
+      if (company?.id) config.headers['X-Company-Id'] = String(company.id)
+    } catch {
+      // ignore JSON parse errors
+    }
+  }
   return config
 })
 

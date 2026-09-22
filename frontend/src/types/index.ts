@@ -7,6 +7,16 @@ export interface PaginatedResponse<T> {
   pages: number
 }
 
+// ── Company ───────────────────────────────────────────────────────────────────
+export interface Company {
+  id: number
+  code: string
+  name: string
+  logo_url: string | null
+  brand_color: string | null
+  is_active: boolean
+}
+
 // ── Notification preferences ──────────────────────────────────────────────────
 export interface NotificationPrefs {
   notify_on_reject: boolean

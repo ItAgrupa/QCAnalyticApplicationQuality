@@ -7,7 +7,7 @@ import {
 import { Add as AddIcon, Edit as EditIcon, Delete as DeleteIcon } from '@mui/icons-material'
 import { DataGrid, type GridColDef } from '@mui/x-data-grid'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { useForm } from 'react-hook-form'
+import { useForm, Controller } from 'react-hook-form'
 import {
   listScoreRules, createScoreRule, updateScoreRule, deleteScoreRule,
   listClients, type ScoreRule,
@@ -16,6 +16,7 @@ import {
 type SRForm = {
   client_id: string; market_id: string; parameter_code: string; score_type: string
   score_label: string; min_value: string; max_value: string; unit: string; meaning: string
+  company_id: string
 }
 
 const Q_LABEL_COLORS: Record<string, 'success' | 'info' | 'warning' | 'error'> = {
@@ -29,15 +30,17 @@ export default function ScoreRulesTab() {
   const qc = useQueryClient()
   const [dialog, setDialog]       = useState<ScoreRule | null | 'new'>(null)
   const [scoreTypeTab, setScoreTypeTab] = useState(0)
+  const [filterCompany, setFilterCompany] = useState<string>('')
   const [filterClient, setFilterClient] = useState<string>('')
   const currentType = scoreTypeTab === 0 ? 'Q' : 'CS'
 
   const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
   const { data, isFetching } = useQuery({
-    queryKey: ['score-rules', currentType, filterClient],
+    queryKey: ['score-rules', currentType, filterClient, filterCompany],
     queryFn: () => listScoreRules({
       score_type: currentType,
       client_id: filterClient || undefined,
+      company_id: filterCompany ? Number(filterCompany) : undefined,
       page_size: 200,
     }),
   })
@@ -59,14 +62,14 @@ export default function ScoreRulesTab() {
 
   const open = (r: ScoreRule | 'new') => {
     form.reset(r === 'new'
-      ? { client_id: filterClient, market_id: '', parameter_code: 'overall', score_type: currentType, score_label: '', min_value: '', max_value: '', unit: '%', meaning: '' }
-      : { client_id: String(r.client_id ?? ''), market_id: String(r.market_id ?? ''), parameter_code: r.parameter_code, score_type: r.score_type, score_label: r.score_label, min_value: r.min_value ?? '', max_value: r.max_value ?? '', unit: r.unit ?? '%', meaning: r.meaning ?? '' })
+      ? { client_id: filterClient, company_id: filterCompany || '', market_id: '', parameter_code: 'overall', score_type: currentType, score_label: '', min_value: '', max_value: '', unit: '%', meaning: '' }
+      : { client_id: String(r.client_id ?? ''), company_id: r.company_id != null ? String(r.company_id) : '', market_id: String(r.market_id ?? ''), parameter_code: r.parameter_code, score_type: r.score_type, score_label: r.score_label, min_value: r.min_value ?? '', max_value: r.max_value ?? '', unit: r.unit ?? '%', meaning: r.meaning ?? '' })
     setDialog(r)
   }
 
   const submit = form.handleSubmit((d) => {
     const toNum = (v: string) => v ? Number(v) : null
-    const payload = { ...d, client_id: toNum(d.client_id), market_id: toNum(d.market_id), min_value: d.min_value || null, max_value: d.max_value || null }
+    const payload = { ...d, client_id: toNum(d.client_id), company_id: toNum(d.company_id), market_id: toNum(d.market_id), min_value: d.min_value || null, max_value: d.max_value || null }
     if (dialog === 'new') createMut.mutate(payload)
     else if (dialog) updateMut.mutate({ id: dialog.id, d: payload })
   })
@@ -87,6 +90,17 @@ export default function ScoreRulesTab() {
     { field: 'min_value', headerName: 'Min', width: 80, renderCell: ({ row }) => (row as ScoreRule).min_value ?? '—' },
     { field: 'max_value', headerName: 'Max', width: 80, renderCell: ({ row }) => (row as ScoreRule).max_value ?? '—' },
     { field: 'unit', headerName: 'Unit', width: 70, renderCell: ({ row }) => (row as ScoreRule).unit ?? '—' },
+    {
+      field: 'company_id',
+      headerName: 'Company',
+      width: 130,
+      renderCell: ({ row }) => {
+        const cid = (row as ScoreRule).company_id
+        if (cid === 1) return <Chip size="small" label="Magopco" sx={{ bgcolor: 'rgba(123, 31, 162, 0.1)', color: '#7B1FA2', fontWeight: 600 }} />
+        if (cid === 2) return <Chip size="small" label="Agrupa Marca" sx={{ bgcolor: 'rgba(46, 125, 50, 0.1)', color: '#2E7D32', fontWeight: 600 }} />
+        return <Chip size="small" label="Shared" sx={{ bgcolor: '#F1F5F9', color: '#64748B', fontWeight: 600 }} />
+      },
+    },
     {
       field: 'client_id', headerName: 'Client', width: 160,
       renderCell: ({ row }) => {
@@ -109,10 +123,22 @@ export default function ScoreRulesTab() {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} flexWrap="wrap" gap={1}>
-        <Box display="flex" alignItems="center" gap={2}>
+        <Box display="flex" alignItems="center" gap={2} flexWrap="wrap">
           <Typography variant="subtitle1" fontWeight={700}>
             Score Rules <Chip label={data?.total ?? 0} size="small" sx={{ ml: 1 }} />
           </Typography>
+          <TextField
+            select
+            size="small"
+            label="Filter company"
+            value={filterCompany}
+            onChange={e => setFilterCompany(e.target.value)}
+            sx={{ minWidth: 160 }}
+          >
+            <MenuItem value="">All companies</MenuItem>
+            <MenuItem value="1">Magopco</MenuItem>
+            <MenuItem value="2">Agrupa Marca</MenuItem>
+          </TextField>
           <TextField
             select size="small" label="Filter by client" value={filterClient}
             onChange={e => setFilterClient(e.target.value)} sx={{ minWidth: 200 }}
@@ -173,6 +199,19 @@ export default function ScoreRulesTab() {
             </Grid>
             <Grid item xs={6} sm={4}>
               <TextField fullWidth label="Unit" placeholder="%" {...form.register('unit')} />
+            </Grid>
+            <Grid item xs={12}>
+              <Controller
+                name="company_id"
+                control={form.control}
+                render={({ field }) => (
+                  <TextField {...field} select label="Company Assignment" fullWidth helperText="Assign to a company or keep shared across both">
+                    <MenuItem value="">Global (Shared across all companies)</MenuItem>
+                    <MenuItem value="1">Magopco</MenuItem>
+                    <MenuItem value="2">Agrupa Marca</MenuItem>
+                  </TextField>
+                )}
+              />
             </Grid>
             <Grid item xs={12} sm={8}>
               <TextField select fullWidth label="Client (blank = global rule)" {...form.register('client_id')}>

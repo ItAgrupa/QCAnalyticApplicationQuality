@@ -139,7 +139,7 @@ from sqlalchemy.orm import joinedload
 
 
 def list_clients(db: Session, page=1, page_size=50, search: str | None = None,
-                 include_inactive=False) -> PaginatedResponse:
+                 include_inactive=False, company_id: int | None = None) -> PaginatedResponse:
     from app.schemas.client import ClientResponse  # local import avoids circular
     q = db.query(Client).options(
         joinedload(Client.country), joinedload(Client.market),
@@ -147,6 +147,8 @@ def list_clients(db: Session, page=1, page_size=50, search: str | None = None,
     )
     if not include_inactive:
         q = q.filter(Client.is_active == True)  # noqa
+    if company_id is not None:
+        q = q.filter((Client.company_id == company_id) | (Client.company_id.is_(None)))
     if search:
         term = f"%{search.lower()}%"
         q = q.filter(
@@ -340,10 +342,13 @@ from app.schemas.standard import QualityStandardCreate, QualityStandardUpdate
 def list_standards(db: Session, client_id: int | None = None, product_id: int | None = None,
                    variety_id: int | None = None, packaging_type_id: int | None = None,
                    parameter_group: str | None = None,
-                   page=1, page_size=100, active_only=True) -> PaginatedResponse:
+                   page=1, page_size=100, active_only=True,
+                   company_id: int | None = None) -> PaginatedResponse:
     q = db.query(QualityStandard)
     if active_only:
         q = q.filter(QualityStandard.is_active == True)  # noqa
+    if company_id is not None:
+        q = q.filter((QualityStandard.company_id == company_id) | (QualityStandard.company_id.is_(None)))
     if client_id:
         q = q.filter(QualityStandard.client_id == client_id)
     if product_id:
@@ -433,8 +438,11 @@ from app.schemas.score_rule import ScoreRuleCreate, ScoreRuleUpdate
 
 
 def list_score_rules(db: Session, client_id: int | None = None,
-                     score_type: str | None = None, page=1, page_size=100) -> PaginatedResponse:
+                     score_type: str | None = None, page=1, page_size=100,
+                     company_id: int | None = None) -> PaginatedResponse:
     q = db.query(ScoreRule)
+    if company_id is not None:
+        q = q.filter((ScoreRule.company_id == company_id) | (ScoreRule.company_id.is_(None)))
     if client_id:
         q = q.filter(ScoreRule.client_id == client_id)
     if score_type:

@@ -1,9 +1,9 @@
 from datetime import date
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from sqlalchemy import func, case
 
-from app.api.deps import CurrentUser, DB
+from app.api.deps import CurrentUser, DB, ActiveCompanyId
 from app.models.import_job import ImportJob
 from app.models.load import Load
 from app.models.load_summary_measurement import LoadSummaryMeasurement
@@ -16,42 +16,45 @@ router = APIRouter()
 
 
 @router.get("/")
-def get_dashboard(current_user: CurrentUser, db: DB):
-    """Aggregated KPIs, measurement averages, and Bulk vs Packaged breakdown."""
+def get_dashboard(
+    current_user: CurrentUser,
+    db: DB,
+    company_id: ActiveCompanyId = None,
+):
+    """Aggregated KPIs, measurement averages, and Bulk vs Packaged breakdown, scoped by company if provided."""
 
     # ── Load status counts ────────────────────────────────────────────────────
-    status_rows = (
-        db.query(Load.final_status, func.count(Load.id))
-        .group_by(Load.final_status)
-        .all()
-    )
+    load_status_q = db.query(Load.final_status, func.count(Load.id))
+    if company_id:
+        load_status_q = load_status_q.filter(Load.company_id == company_id)
+    status_rows = load_status_q.group_by(Load.final_status).all()
     status_counts = {s: c for s, c in status_rows}
     total_loads = sum(status_counts.values())
 
     # ── Import status counts ──────────────────────────────────────────────────
-    import_rows = (
-        db.query(ImportJob.status, func.count(ImportJob.id))
-        .group_by(ImportJob.status)
-        .all()
-    )
+    import_status_q = db.query(ImportJob.status, func.count(ImportJob.id))
+    if company_id:
+        import_status_q = import_status_q.filter(ImportJob.company_id == company_id)
+    import_rows = import_status_q.group_by(ImportJob.status).all()
     import_counts = {s: c for s, c in import_rows}
     pending_validation = import_counts.get("READY_FOR_VALIDATION", 0)
     total_imports = sum(import_counts.values())
 
     # ── This-month loads ──────────────────────────────────────────────────────
     first_of_month = date.today().replace(day=1)
-    loads_this_month = (
+    month_loads_q = (
         db.query(func.count(Load.id))
         .filter(func.date(Load.created_at) >= first_of_month)
-        .scalar()
-    ) or 0
+    )
+    if company_id:
+        month_loads_q = month_loads_q.filter(Load.company_id == company_id)
+    loads_this_month = month_loads_q.scalar() or 0
 
     # ── Pallet status breakdown ───────────────────────────────────────────────
-    pallet_rows = (
-        db.query(Pallet.status, func.count(Pallet.id))
-        .group_by(Pallet.status)
-        .all()
-    )
+    pallet_q = db.query(Pallet.status, func.count(Pallet.id))
+    if company_id:
+        pallet_q = pallet_q.join(Load, Pallet.load_id == Load.id).filter(Load.company_id == company_id)
+    pallet_rows = pallet_q.group_by(Pallet.status).all()
     pallet_status = {s: c for s, c in pallet_rows}
     total_pallets_all = sum(pallet_status.values())
     passed_pallets  = pallet_status.get("PASS", 0)
@@ -61,32 +64,25 @@ def get_dashboard(current_user: CurrentUser, db: DB):
     pass_rate = round(passed_pallets / analysed_pallets * 100, 1) if analysed_pallets > 0 else None
 
     # ── Live quality standards lookup ─────────────────────────────────────────
-    # Read directly from the quality_standards table so the dashboard is always
-    # in sync with whatever is configured in Settings.  Pre-stamped values on
-    # measurement rows are intentionally ignored here — they may be stale or
-    # contain placeholder zeros from loads analysed before standards were set up.
-    #
-    # When multiple standards exist for the same parameter_code (different clients
-    # or variety/packaging specifics), we prefer the most general rule:
-    #   1. No variety restriction  (variety_id IS NULL)
-    #   2. No packaging restriction (packaging_type_id IS NULL)
-    #   3. Most recently created (highest id)
-    std_rows = (
+    std_q = (
         db.query(QualityStandard)
         .filter(
             QualityStandard.is_active == True,  # noqa: E712
             (QualityStandard.effective_to.is_(None)) |
             (QualityStandard.effective_to >= date.today()),
         )
-        .order_by(
-            QualityStandard.parameter_code,
-            case((QualityStandard.variety_id.is_(None), 0), else_=1),
-            case((QualityStandard.packaging_type_id.is_(None), 0), else_=1),
-            QualityStandard.id.desc(),
-        )
-        .all()
     )
-    # First matching row per parameter_code wins (most general + most recent)
+    if company_id:
+        std_q = std_q.filter(
+            (QualityStandard.company_id == company_id) | (QualityStandard.company_id.is_(None))
+        )
+    std_rows = std_q.order_by(
+        QualityStandard.parameter_code,
+        case((QualityStandard.variety_id.is_(None), 0), else_=1),
+        case((QualityStandard.packaging_type_id.is_(None), 0), else_=1),
+        QualityStandard.id.desc(),
+    ).all()
+
     live_standards: dict[str, dict] = {}
     for s in std_rows:
         if s.parameter_code not in live_standards:
@@ -96,9 +92,7 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             }
 
     # ── Cross-load measurement averages ──────────────────────────────────────
-    # Average each parameter across all loads using load_summary_measurements
-    # (already pre-computed by the decision engine per load).
-    sm_rows = (
+    sm_q = (
         db.query(
             LoadSummaryMeasurement.parameter_code,
             LoadSummaryMeasurement.parameter_name,
@@ -108,7 +102,11 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             func.avg(LoadSummaryMeasurement.min_value).label("avg_min"),
         )
         .filter(LoadSummaryMeasurement.average_value.isnot(None))
-        .group_by(
+    )
+    if company_id:
+        sm_q = sm_q.join(Load, LoadSummaryMeasurement.load_id == Load.id).filter(Load.company_id == company_id)
+    sm_rows = (
+        sm_q.group_by(
             LoadSummaryMeasurement.parameter_code,
             LoadSummaryMeasurement.parameter_name,
             LoadSummaryMeasurement.unit,
@@ -118,15 +116,20 @@ def get_dashboard(current_user: CurrentUser, db: DB):
     )
 
     # Worst recorded value per parameter (from pallet-level measurements)
-    pm_agg_rows = (
+    pm_q = (
         db.query(
             PalletMeasurement.parameter_code,
             func.max(PalletMeasurement.value_numeric).label("max_value"),
         )
         .filter(PalletMeasurement.value_numeric.isnot(None))
-        .group_by(PalletMeasurement.parameter_code)
-        .all()
     )
+    if company_id:
+        pm_q = (
+            pm_q.join(Pallet, PalletMeasurement.pallet_id == Pallet.id)
+            .join(Load, Pallet.load_id == Load.id)
+            .filter(Load.company_id == company_id)
+        )
+    pm_agg_rows = pm_q.group_by(PalletMeasurement.parameter_code).all()
     pm_max_by_code = {r.parameter_code: float(r.max_value) for r in pm_agg_rows}
 
     measurement_averages = [
@@ -138,8 +141,6 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             "avg_max":   round(float(r.avg_max),   2) if r.avg_max   is not None else None,
             "avg_min":   round(float(r.avg_min),   2) if r.avg_min   is not None else None,
             "max_value": round(pm_max_by_code.get(r.parameter_code, 0.0), 2),
-            # Standards come exclusively from the live quality_standards table.
-            # None = parameter exists in measurements but has no standard configured yet.
             "standard_min": live_standards.get(r.parameter_code, {}).get("standard_min"),
             "standard_max": live_standards.get(r.parameter_code, {}).get("standard_max"),
         }
@@ -147,8 +148,7 @@ def get_dashboard(current_user: CurrentUser, db: DB):
     ]
 
     # ── Bulk vs Packaged breakdown ────────────────────────────────────────────
-    # Join loads → packaging_types → pallets → pallet_measurements
-    bulk_rows = (
+    bulk_q = (
         db.query(
             PackagingType.is_bulk.label("is_bulk"),
             PalletMeasurement.parameter_code,
@@ -160,7 +160,11 @@ def get_dashboard(current_user: CurrentUser, db: DB):
         .join(Pallet, Pallet.load_id == Load.id)
         .join(PalletMeasurement, PalletMeasurement.pallet_id == Pallet.id)
         .filter(PalletMeasurement.value_numeric.isnot(None))
-        .group_by(
+    )
+    if company_id:
+        bulk_q = bulk_q.filter(Load.company_id == company_id)
+    bulk_rows = (
+        bulk_q.group_by(
             PackagingType.is_bulk,
             PalletMeasurement.parameter_code,
             PalletMeasurement.parameter_name,
@@ -176,12 +180,9 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             packaging_breakdown[key][r.parameter_code] = round(float(r.avg_value), 2)
 
     # ── Recent imports (last 8) ───────────────────────────────────────────────
-    recent_imports_q = (
-        db.query(ImportJob)
-        .order_by(ImportJob.id.desc())
-        .limit(8)
-        .all()
-    )
+    recent_imports_q = db.query(ImportJob)
+    if company_id:
+        recent_imports_q = recent_imports_q.filter(ImportJob.company_id == company_id)
     recent_imports = [
         {
             "id": j.id,
@@ -191,16 +192,13 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             "extraction_confidence": float(j.extraction_confidence) if j.extraction_confidence else None,
             "created_at": j.created_at.isoformat() if j.created_at else None,
         }
-        for j in recent_imports_q
+        for j in recent_imports_q.order_by(ImportJob.id.desc()).limit(8).all()
     ]
 
     # ── Recent loads (last 8) ─────────────────────────────────────────────────
-    recent_loads_q = (
-        db.query(Load)
-        .order_by(Load.id.desc())
-        .limit(8)
-        .all()
-    )
+    recent_loads_q = db.query(Load)
+    if company_id:
+        recent_loads_q = recent_loads_q.filter(Load.company_id == company_id)
     recent_loads = [
         {
             "id": lo.id,
@@ -213,28 +211,24 @@ def get_dashboard(current_user: CurrentUser, db: DB):
             "condition_score": lo.condition_score,
             "main_issue": lo.main_issue,
         }
-        for lo in recent_loads_q
+        for lo in recent_loads_q.order_by(Load.id.desc()).limit(8).all()
     ]
 
     return {
-        # ── Summary counts ──
         "total_loads": total_loads,
         "total_imports": total_imports,
         "loads_this_month": loads_this_month,
         "pending_validation": pending_validation,
         "load_status_counts": status_counts,
         "import_status_counts": import_counts,
-        # ── Pallet quality ──
         "total_pallets": total_pallets_all,
-        "analysed_pallets": analysed_pallets,   # = passed + failed + hold (decision made)
+        "analysed_pallets": analysed_pallets,
         "passed_pallets": passed_pallets,
         "failed_pallets": failed_pallets,
         "hold_pallets": hold_pallets,
-        "pass_rate": pass_rate,                 # = passed / analysed_pallets × 100
-        # ── Measurement averages ──
+        "pass_rate": pass_rate,
         "measurement_averages": measurement_averages,
         "packaging_breakdown": packaging_breakdown,
-        # ── Activity ──
         "recent_imports": recent_imports,
         "recent_loads": recent_loads,
     }

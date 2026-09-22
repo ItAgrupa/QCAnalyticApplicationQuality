@@ -21,6 +21,7 @@ import {
 
 type ClientForm = {
   client_code: string; name: string; country_id: string; market_id: string
+  company_id: string
   default_language: string; notes: string; is_active: boolean
 }
 
@@ -30,6 +31,7 @@ export default function ClientsTab() {
   const qc = useQueryClient()
   const detectFileRef = useRef<HTMLInputElement>(null)
 
+  const [companyFilter, setCompanyFilter]   = useState<string>('')
   const [dialog, setDialog]                 = useState<Client | null | 'new'>(null)
   const [templateDialog, setTemplateDialog] = useState<Client | null>(null)
   const [apiError, setApiError]             = useState<string | null>(null)
@@ -38,7 +40,13 @@ export default function ClientsTab() {
   const [detectResults, setDetectResults]   = useState<DetectResult[] | null>(null)
   const [detectError, setDetectError]       = useState<string | null>(null)
 
-  const { data, isFetching } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
+  const { data, isFetching } = useQuery({
+    queryKey: ['clients', companyFilter],
+    queryFn: () => listClients({
+      page_size: 200,
+      company_id: companyFilter ? Number(companyFilter) : undefined,
+    }),
+  })
   const { data: countries }  = useQuery({ queryKey: ['countries'], queryFn: () => listCountries({ page_size: 500 }) })
   const { data: markets }    = useQuery({ queryKey: ['markets'],   queryFn: () => listMarkets({ page_size: 500 }) })
   const { data: parsers }    = useQuery({ queryKey: ['parsers'],   queryFn: listParsers })
@@ -79,8 +87,8 @@ export default function ClientsTab() {
   })
 
   const openEdit = (c: Client | 'new') => {
-    if (c === 'new') form.reset({ client_code: '', name: '', country_id: '', market_id: '', default_language: 'en', notes: '', is_active: true })
-    else form.reset({ client_code: c.client_code, name: c.name, country_id: String(c.country?.id ?? ''), market_id: String(c.market?.id ?? ''), default_language: c.default_language, notes: c.notes ?? '', is_active: c.is_active })
+    if (c === 'new') form.reset({ client_code: '', name: '', country_id: '', market_id: '', company_id: '', default_language: 'en', notes: '', is_active: true })
+    else form.reset({ client_code: c.client_code, name: c.name, country_id: String(c.country?.id ?? ''), market_id: String(c.market?.id ?? ''), company_id: String(c.company_id ?? ''), default_language: c.default_language, notes: c.notes ?? '', is_active: c.is_active })
     setApiError(null)
     setDialog(c)
   }
@@ -116,7 +124,12 @@ export default function ClientsTab() {
   }
 
   const submitClient = form.handleSubmit((d) => {
-    const payload = { ...d, country_id: d.country_id ? Number(d.country_id) : null, market_id: d.market_id ? Number(d.market_id) : null }
+    const payload = {
+      ...d,
+      country_id: d.country_id ? Number(d.country_id) : null,
+      market_id: d.market_id ? Number(d.market_id) : null,
+      company_id: d.company_id ? Number(d.company_id) : null,
+    }
     if (dialog === 'new') createMut.mutate(payload)
     else if (dialog) updateMut.mutate({ id: dialog.id, d: payload })
   })
@@ -129,6 +142,17 @@ export default function ClientsTab() {
   const columns: GridColDef[] = [
     { field: 'client_code', headerName: 'Code',        width: 120 },
     { field: 'name',        headerName: 'Client Name', flex: 1.5 },
+    {
+      field: 'company_id',
+      headerName: 'Company',
+      width: 140,
+      renderCell: ({ row }) => {
+        const cid = (row as Client).company_id
+        if (cid === 1) return <Chip size="small" label="Magopco" sx={{ bgcolor: 'rgba(123, 31, 162, 0.1)', color: '#7B1FA2', fontWeight: 600 }} />
+        if (cid === 2) return <Chip size="small" label="Agrupa Marca" sx={{ bgcolor: 'rgba(46, 125, 50, 0.1)', color: '#2E7D32', fontWeight: 600 }} />
+        return <Chip size="small" label="Shared" sx={{ bgcolor: '#F1F5F9', color: '#64748B', fontWeight: 600 }} />
+      },
+    },
     { field: 'country',     headerName: 'Country',     width: 130, renderCell: ({ row }) => (row as Client).country?.name ?? '—' },
     { field: 'market',      headerName: 'Market',      width: 130, renderCell: ({ row }) => (row as Client).market?.name ?? '—' },
     {
@@ -159,9 +183,23 @@ export default function ClientsTab() {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="subtitle1" fontWeight={700}>
-          Clients <Chip label={data?.total ?? 0} size="small" sx={{ ml: 1 }} />
-        </Typography>
+        <Box display="flex" alignItems="center" gap={2}>
+          <Typography variant="subtitle1" fontWeight={700}>
+            Clients <Chip label={data?.total ?? 0} size="small" sx={{ ml: 1 }} />
+          </Typography>
+          <TextField
+            select
+            size="small"
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            sx={{ minWidth: 160 }}
+            label="Filter Company"
+          >
+            <MenuItem value="">All Companies</MenuItem>
+            <MenuItem value="1">Magopco</MenuItem>
+            <MenuItem value="2">Agrupa Marca</MenuItem>
+          </TextField>
+        </Box>
         <Button variant="contained" size="small" startIcon={<AddIcon />} onClick={() => openEdit('new')}>
           Add Client
         </Button>
@@ -182,6 +220,13 @@ export default function ClientsTab() {
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, pt: 1 }}>
             <TextField label="Client Code" fullWidth {...form.register('client_code', { required: true })} />
             <TextField label="Full Name"   fullWidth {...form.register('name',        { required: true })} />
+            <Controller name="company_id" control={form.control} render={({ field }) => (
+              <TextField {...field} select label="Company Assignment" fullWidth helperText="Assign to a specific company or keep shared across both">
+                <MenuItem value="">Global (Shared across all companies)</MenuItem>
+                <MenuItem value="1">Magopco</MenuItem>
+                <MenuItem value="2">Agrupa Marca</MenuItem>
+              </TextField>
+            )} />
             <Controller name="country_id" control={form.control} render={({ field }) => (
               <TextField {...field} select label="Country" fullWidth>
                 <MenuItem value="">— None —</MenuItem>

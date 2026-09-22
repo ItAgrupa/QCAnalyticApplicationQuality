@@ -59,5 +59,5 @@ export interface RecentLoad {
   main_issue: string | null
 }
 
-export const getDashboard = (): Promise<DashboardData> =>
-  axiosClient.get('/dashboard/').then(r => r.data)
+export const getDashboard = (companyId?: number): Promise<DashboardData> =>
+  axiosClient.get('/dashboard/', { params: companyId ? { company_id: companyId } : {} }).then(r => r.data)

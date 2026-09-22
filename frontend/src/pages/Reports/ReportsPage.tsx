@@ -12,6 +12,7 @@ import { useQuery } from '@tanstack/react-query'
 import { useNavigate } from 'react-router-dom'
 import { listLoads, type LoadOut } from '@/api/loads'
 import { listClients } from '@/api/masterData'
+import { useCompanyStore } from '@/hooks/useCompanyStore'
 
 // ── Status helpers ────────────────────────────────────────────────────────────
 
@@ -47,18 +48,23 @@ function CSScoreChip({ score }: { score: string | null }) {
 
 export default function ReportsPage() {
   const navigate = useNavigate()
+  const currentCompany = useCompanyStore(s => s.currentCompany)
   const [clientFilter, setClientFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [page, setPage] = useState(0)
   const [pageSize, setPageSize] = useState(25)
 
-  const { data: clients } = useQuery({ queryKey: ['clients'], queryFn: () => listClients({ page_size: 200 }) })
+  const { data: clients } = useQuery({
+    queryKey: ['clients', currentCompany?.id],
+    queryFn: () => listClients({ page_size: 200, company_id: currentCompany?.id }),
+  })
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['loads', clientFilter, statusFilter, page, pageSize],
+    queryKey: ['loads', clientFilter, statusFilter, page, pageSize, currentCompany?.id],
     queryFn: () => listLoads({
       client_id: clientFilter || undefined,
       final_status: statusFilter || undefined,
+      company_id: currentCompany?.id,
       page: page + 1,
       page_size: pageSize,
     }),
@@ -115,7 +121,20 @@ export default function ReportsPage() {
   return (
     <Box>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Typography variant="h5" fontWeight={700}>Reports</Typography>
+        <Box display="flex" alignItems="center" gap={1.5}>
+          <Typography variant="h5" fontWeight={700}>Reports</Typography>
+          {currentCompany && (
+            <Chip
+              label={currentCompany.name}
+              size="small"
+              sx={{
+                bgcolor: currentCompany.id === 1 ? 'rgba(123, 31, 162, 0.1)' : 'rgba(46, 125, 50, 0.1)',
+                color: currentCompany.id === 1 ? '#7B1FA2' : '#2E7D32',
+                fontWeight: 700,
+              }}
+            />
+          )}
+        </Box>
       </Box>
 
       {/* Filters */}

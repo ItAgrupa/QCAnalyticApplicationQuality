@@ -5,6 +5,7 @@ from pydantic import BaseModel
 
 class ScoreRuleCreate(BaseModel):
     client_id: int | None = None
+    company_id: int | None = None
     market_id: int | None = None
     parameter_code: str
     score_type: str          # "Q" or "CS"
@@ -16,6 +17,7 @@ class ScoreRuleCreate(BaseModel):
 
 
 class ScoreRuleUpdate(BaseModel):
+    company_id: int | None = None
     min_value: Decimal | None = None
     max_value: Decimal | None = None
     unit: str | None = None
@@ -25,6 +27,7 @@ class ScoreRuleUpdate(BaseModel):
 class ScoreRuleResponse(BaseModel):
     id: int
     client_id: int | None
+    company_id: int | None = None
     market_id: int | None
     parameter_code: str
     score_type: str

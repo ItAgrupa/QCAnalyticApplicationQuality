@@ -25,6 +25,7 @@ MAX_PDF_SIZE = 50 * 1024 * 1024  # 50 MB
 def _build_response(job: ImportJob) -> ImportJobResponse:
     return ImportJobResponse(
         id=job.id,
+        company_id=job.company_id,
         client_id=job.client_id,
         file_name=job.file_name,
         file_type=job.file_type,
@@ -41,6 +42,7 @@ def _build_detail(job: ImportJob) -> ImportJobDetailResponse:
     payload_obj = job.raw_payload
     return ImportJobDetailResponse(
         id=job.id,
+        company_id=job.company_id,
         client_id=job.client_id,
         file_name=job.file_name,
         file_type=job.file_type,
@@ -62,6 +64,7 @@ async def upload_import(
     file: UploadFile,
     client_id: int,
     user_id: int,
+    company_id: int | None = None,
 ) -> ImportJob:
     # Validate client exists
     client = db.get(Client, client_id)
@@ -111,8 +114,12 @@ async def upload_import(
     file_path = client_dir / safe_name
     file_path.write_bytes(pdf_bytes)
 
+    # Determine company: explicit company_id, or client's assigned company, fallback to 1
+    effective_company_id = company_id or client.company_id or 1
+
     # Create ImportJob record
     job = ImportJob(
+        company_id=effective_company_id,
         client_id=client_id,
         uploaded_by_user_id=user_id,
         original_file_path=str(file_path),
@@ -126,7 +133,7 @@ async def upload_import(
 
     log_action(db, action="IMPORT_UPLOADED", entity_type="ImportJob",
                entity_id=job.id, user_id=user_id,
-               new_value={"file_name": file.filename, "client_id": client_id})
+               new_value={"file_name": file.filename, "client_id": client_id, "company_id": effective_company_id})
     db.commit()
     db.refresh(job)
     return job
@@ -138,12 +145,15 @@ def list_imports(
     page_size: int = 25,
     client_id: int | None = None,
     status_filter: str | None = None,
+    company_id: int | None = None,
 ) -> PaginatedResponse[ImportJobResponse]:
     q = (
         db.query(ImportJob)
         .options(joinedload(ImportJob.client))
         .order_by(ImportJob.created_at.desc())
     )
+    if company_id:
+        q = q.filter(ImportJob.company_id == company_id)
     if client_id:
         q = q.filter(ImportJob.client_id == client_id)
     if status_filter:

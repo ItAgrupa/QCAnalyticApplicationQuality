@@ -3,7 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session, joinedload
 
-from app.api.deps import CurrentUser, DB, require_role
+from app.api.deps import CurrentUser, DB, require_role, ActiveCompanyId
 from app.core.permissions import RoleName
 from app.models.load import Load
 from app.models.pallet import Pallet
@@ -20,11 +20,14 @@ def list_loads(
     current_user: CurrentUser,
     db: DB,
     client_id: int | None = None,
+    company_id: ActiveCompanyId = None,
     final_status: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
 ):
     q = db.query(Load)
+    if company_id:
+        q = q.filter(Load.company_id == company_id)
     if client_id:
         q = q.filter(Load.client_id == client_id)
     if final_status:

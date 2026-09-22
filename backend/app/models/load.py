@@ -12,6 +12,7 @@ class Load(Base, TimestampMixin):
     __tablename__ = "loads"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    company_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("companies.id", ondelete="RESTRICT"), nullable=True, index=True)
     client_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("clients.id", ondelete="RESTRICT"), nullable=False)
     market_id: Mapped[int | None] = mapped_column(BigInteger, ForeignKey("markets.id"), nullable=True)
     import_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("imports.id", ondelete="RESTRICT"), nullable=False, unique=True)
@@ -38,6 +39,7 @@ class Load(Base, TimestampMixin):
     main_issue: Mapped[str | None] = mapped_column(Text, nullable=True)
     applied_standard_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
 
+    company: Mapped["Company | None"] = relationship("Company")
     client: Mapped["Client"] = relationship("Client", back_populates="loads")
     import_job: Mapped["ImportJob"] = relationship("ImportJob", back_populates="load")
     pallets: Mapped[list["Pallet"]] = relationship("Pallet", back_populates="load", cascade="all, delete-orphan")
