@@ -7,7 +7,7 @@ class QualityStandardCreate(BaseModel):
     client_id: int
     company_id: int | None = None
     market_id: int | None = None
-    product_id: int
+    product_id: int | None = None
     variety_id: int | None = None
     packaging_type_id: int | None = None
     category: str | None = None
@@ -32,6 +32,9 @@ class QualityStandardCreate(BaseModel):
 
 class QualityStandardUpdate(BaseModel):
     company_id: int | None = None
+    product_id: int | None = None
+    variety_id: int | None = None
+    packaging_type_id: int | None = None
     parameter_name: str | None = None
     parameter_group: str | None = None
     min_value: Decimal | None = None
@@ -48,7 +51,7 @@ class QualityStandardResponse(BaseModel):
     client_id: int
     company_id: int | None = None
     market_id: int | None
-    product_id: int
+    product_id: int | None = None
     variety_id: int | None
     packaging_type_id: int | None
     category: str | None
